@@ -1,9 +1,11 @@
-# DC01 - Update gMSA Permissions After Domain Join
+# DC01 - Add SQL Server Computer Accounts to gMSA Security Group
 # Run as CONTOSO\Administrator AFTER SQL01 and SQL02 have joined the domain
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "===== Updating gMSA Permissions =====" -ForegroundColor Green
+$SQLServersGroupName = "SQL-Servers-gMSA"
+
+Write-Host "===== Adding SQL Servers to gMSA Security Group =====" -ForegroundColor Green
 
 # Check if SQL servers have joined domain
 Write-Host "`nChecking if SQL servers are in domain..." -ForegroundColor Yellow
@@ -26,44 +28,74 @@ if (-not $sql02Computer) {
 Write-Host "SQL01: Found in domain" -ForegroundColor Green
 Write-Host "SQL02: Found in domain" -ForegroundColor Green
 
-# Update SQL Service gMSA
-Write-Host "`n[1/2] Updating SQL Service gMSA permissions..." -ForegroundColor Yellow
+# Get the security group
+Write-Host "`nChecking for security group '$SQLServersGroupName'..." -ForegroundColor Yellow
+$securityGroup = Get-ADGroup -Filter {Name -eq $SQLServersGroupName} -ErrorAction SilentlyContinue
 
-try {
-    Set-ADServiceAccount -Identity "sqlsvc" `
-        -PrincipalsAllowedToRetrieveManagedPassword "SQL01$", "SQL02$"
-    
-    Write-Host "Updated sqlsvc permissions" -ForegroundColor Green
-    Write-Host "Allowed principals: SQL01$, SQL02$" -ForegroundColor Cyan
-} catch {
-    Write-Host "Error updating sqlsvc: $_" -ForegroundColor Red
+if (-not $securityGroup) {
+    Write-Host "ERROR: Security group '$SQLServersGroupName' not found!" -ForegroundColor Red
+    Write-Host "Ensure 02-Configure-AD.ps1 was run successfully." -ForegroundColor Yellow
+    exit
 }
 
-# Update SQL Agent gMSA
-Write-Host "`n[2/2] Updating SQL Agent gMSA permissions..." -ForegroundColor Yellow
+Write-Host "Security group found: $SQLServersGroupName" -ForegroundColor Green
+
+# Add SQL01 to security group
+Write-Host "`n[1/2] Adding SQL01 computer account to '$SQLServersGroupName'..." -ForegroundColor Yellow
 
 try {
-    Set-ADServiceAccount -Identity "sqlagent" `
-        -PrincipalsAllowedToRetrieveManagedPassword "SQL01$", "SQL02$"
-    
-    Write-Host "Updated sqlagent permissions" -ForegroundColor Green
-    Write-Host "Allowed principals: SQL01$, SQL02$" -ForegroundColor Cyan
+    # Check if already a member
+    $currentMembers = Get-ADGroupMember -Identity $SQLServersGroupName | Select-Object -ExpandProperty Name
+    if ($currentMembers -contains "SQL01") {
+        Write-Host "SQL01 is already a member of $SQLServersGroupName" -ForegroundColor Yellow
+    } else {
+        Add-ADGroupMember -Identity $SQLServersGroupName -Members $sql01Computer
+        Write-Host "SQL01 added to $SQLServersGroupName successfully" -ForegroundColor Green
+    }
 } catch {
-    Write-Host "Error updating sqlagent: $_" -ForegroundColor Red
+    Write-Host "Error adding SQL01 to group: $_" -ForegroundColor Red
+}
+
+# Add SQL02 to security group
+Write-Host "`n[2/2] Adding SQL02 computer account to '$SQLServersGroupName'..." -ForegroundColor Yellow
+
+try {
+    # Check if already a member
+    $currentMembers = Get-ADGroupMember -Identity $SQLServersGroupName | Select-Object -ExpandProperty Name
+    if ($currentMembers -contains "SQL02") {
+        Write-Host "SQL02 is already a member of $SQLServersGroupName" -ForegroundColor Yellow
+    } else {
+        Add-ADGroupMember -Identity $SQLServersGroupName -Members $sql02Computer
+        Write-Host "SQL02 added to $SQLServersGroupName successfully" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "Error adding SQL02 to group: $_" -ForegroundColor Red
 }
 
 # Verify
 Write-Host "`n===== Verification =====" -ForegroundColor Green
 
+Write-Host "`nMembers of '$SQLServersGroupName':" -ForegroundColor Cyan
+Get-ADGroupMember -Identity $SQLServersGroupName | ForEach-Object { 
+    Write-Host "  - $($_.Name)" -ForegroundColor White
+}
+
+Write-Host "`ngMSA Principals:" -ForegroundColor Cyan
 $sqlsvcPrincipals = (Get-ADServiceAccount -Identity "sqlsvc" -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword
 $sqlagentPrincipals = (Get-ADServiceAccount -Identity "sqlagent" -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword
 
-Write-Host "`nsqlsvc principals:" -ForegroundColor Cyan
-$sqlsvcPrincipals | ForEach-Object { Write-Host "  - $_" }
+Write-Host "  sqlsvc can be retrieved by:" -ForegroundColor White
+$sqlsvcPrincipals | ForEach-Object { 
+    $principal = Get-ADObject -Identity $_ -ErrorAction SilentlyContinue
+    Write-Host "    - $($principal.Name) ($($principal.ObjectClass))" -ForegroundColor Gray
+}
 
-Write-Host "`nsqlagent principals:" -ForegroundColor Cyan
-$sqlagentPrincipals | ForEach-Object { Write-Host "  - $_" }
+Write-Host "  sqlagent can be retrieved by:" -ForegroundColor White
+$sqlagentPrincipals | ForEach-Object { 
+    $principal = Get-ADObject -Identity $_ -ErrorAction SilentlyContinue
+    Write-Host "    - $($principal.Name) ($($principal.ObjectClass))" -ForegroundColor Gray
+}
 
-Write-Host "`n===== gMSA Permissions Updated Successfully! =====" -ForegroundColor Green
+Write-Host "`n===== SQL Servers Added to gMSA Group Successfully! =====" -ForegroundColor Green
 Write-Host "Next: Install SQL Server on SQL01 and SQL02" -ForegroundColor Yellow
 

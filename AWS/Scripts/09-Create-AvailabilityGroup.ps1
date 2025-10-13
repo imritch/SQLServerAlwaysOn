@@ -1,4 +1,4 @@
-# SQL01 - Create Availability Group
+# SQL01 - Create Availability Group (Multi-Subnet)
 # Run as CONTOSO\Administrator on SQL01
 
 $ErrorActionPreference = "Stop"
@@ -9,14 +9,30 @@ Import-Module SqlServer
 # Configuration
 $AGName = "SQLAOAG01"
 $ListenerName = "SQLAGL01"
-$ListenerIP = Read-Host "Enter unused IP for AG Listener (e.g., 172.31.x.x)"
 $ListenerPort = 59999
 $EndpointPort = 5022
 $DatabaseName = "AGTestDB"
 $PrimaryReplica = "SQL01"
 $SecondaryReplica = "SQL02"
 
-Write-Host "===== Creating Availability Group =====" -ForegroundColor Green
+Write-Host "===== Creating Availability Group (Multi-Subnet) =====" -ForegroundColor Green
+Write-Host "`nIMPORTANT: Multi-subnet AG Listener requires 2 IP addresses (one per subnet)" -ForegroundColor Yellow
+Write-Host "Check CloudFormation outputs for recommended IPs" -ForegroundColor Cyan
+
+# Get subnet information
+Write-Host "`nSubnet Information:" -ForegroundColor Cyan
+Write-Host "  Subnet 1 (SQL01): 10.0.1.0/24 - use IP like 10.0.1.51" -ForegroundColor White
+Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24 - use IP like 10.0.2.51" -ForegroundColor White
+
+$ListenerIP1 = Read-Host "`nEnter unused IP for AG Listener in Subnet 1 (e.g., 10.0.1.51)"
+$ListenerIP2 = Read-Host "Enter unused IP for AG Listener in Subnet 2 (e.g., 10.0.2.51)"
+
+Write-Host "`n===== Multi-Subnet AG Configuration =====" -ForegroundColor Green
+Write-Host "AG Name: $AGName" -ForegroundColor Cyan
+Write-Host "Listener Name: $ListenerName" -ForegroundColor Cyan
+Write-Host "Listener IP 1 (Subnet 1): $ListenerIP1" -ForegroundColor Cyan
+Write-Host "Listener IP 2 (Subnet 2): $ListenerIP2" -ForegroundColor Cyan
+Write-Host "Listener Port: $ListenerPort" -ForegroundColor Cyan
 
 # Step 1: Create Database Mirroring Endpoints on both replicas
 Write-Host "`n[1/6] Creating database mirroring endpoints..." -ForegroundColor Yellow
@@ -45,7 +61,8 @@ Write-Host "Endpoint created on $SecondaryReplica" -ForegroundColor Green
 
 # Step 2: Share backup folder on SQL01
 Write-Host "`n[2/6] Setting up backup share..." -ForegroundColor Yellow
-$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP"
+# SQL Server 2022 uses MSSQL16
+$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
 $shareName = "SQLBackup"
 
 try {
@@ -122,39 +139,69 @@ Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $joinDBScript
 
 Write-Host "Database joined to AG on $SecondaryReplica" -ForegroundColor Green
 
-# Step 6: Create AG Listener
-Write-Host "`n[6/6] Creating Availability Group Listener..." -ForegroundColor Yellow
+# Step 6: Create AG Listener (Multi-Subnet with 2 IPs)
+Write-Host "`n[6/6] Creating Availability Group Listener (Multi-Subnet)..." -ForegroundColor Yellow
 
 $createListenerScript = @"
 ALTER AVAILABILITY GROUP [$AGName]
 ADD LISTENER N'$ListenerName' (
-    WITH IP ((N'$ListenerIP', N'255.255.255.0')),
+    WITH IP (
+        (N'$ListenerIP1', N'255.255.255.0'),
+        (N'$ListenerIP2', N'255.255.255.0')
+    ),
     PORT = $ListenerPort
 );
 GO
 "@
 
+Write-Host "Creating listener with IPs: $ListenerIP1, $ListenerIP2" -ForegroundColor Cyan
+
 try {
-    Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createListenerScript
-    Write-Host "Listener '$ListenerName' created" -ForegroundColor Green
+    Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createListenerScript -QueryTimeout 120
+    Write-Host "Multi-subnet listener '$ListenerName' created successfully" -ForegroundColor Green
+    
+    # Wait for listener to come online
+    Start-Sleep -Seconds 5
+    
+    # Verify listener is online
+    $listenerCheck = @"
+SELECT 
+    dns_name,
+    port,
+    ip_configuration_string_from_cluster
+FROM sys.availability_group_listeners
+WHERE dns_name = N'$ListenerName';
+"@
+    
+    $listenerInfo = Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $listenerCheck
+    if ($listenerInfo) {
+        Write-Host "Listener is online and registered" -ForegroundColor Green
+    }
 } catch {
     Write-Host "Error creating listener: $_" -ForegroundColor Red
-    Write-Host "You may need to create it manually in SSMS" -ForegroundColor Yellow
+    Write-Host "You may need to create it manually in SSMS or check IP availability" -ForegroundColor Yellow
 }
 
 # Summary
-Write-Host "`n===== Availability Group Creation Complete! =====" -ForegroundColor Green
+Write-Host "`n===== Multi-Subnet Availability Group Creation Complete! =====" -ForegroundColor Green
 Write-Host "`nAG Details:" -ForegroundColor Cyan
 Write-Host "  AG Name: $AGName"
 Write-Host "  Listener: $ListenerName"
-Write-Host "  Listener IP: $ListenerIP"
+Write-Host "  Listener IP 1 (Subnet 1): $ListenerIP1"
+Write-Host "  Listener IP 2 (Subnet 2): $ListenerIP2"
 Write-Host "  Listener Port: $ListenerPort"
-Write-Host "  Primary: $PrimaryReplica"
-Write-Host "  Secondary: $SecondaryReplica"
+Write-Host "  Primary: $PrimaryReplica (Subnet 1)"
+Write-Host "  Secondary: $SecondaryReplica (Subnet 2)"
 Write-Host "  Database: $DatabaseName"
+Write-Host "  SQL Server Version: 2022"
 
-Write-Host "`nTest connection string:" -ForegroundColor Yellow
+Write-Host "`nTest connection string (REQUIRED: MultiSubnetFailover=True):" -ForegroundColor Yellow
 Write-Host "  Server=$ListenerName,$ListenerPort;Database=$DatabaseName;Integrated Security=True;MultiSubnetFailover=True;" -ForegroundColor Cyan
+
+Write-Host "`nConnection via listener DNS:" -ForegroundColor Yellow
+Write-Host "  Server=$ListenerName.contoso.local,$ListenerPort;Database=$DatabaseName;Integrated Security=True;MultiSubnetFailover=True;" -ForegroundColor Cyan
+
+Write-Host "`nIMPORTANT: Always use MultiSubnetFailover=True for multi-subnet AG connections!" -ForegroundColor Red
 
 Write-Host "`nNext: Run validation script (10-Validate-AG.sql)" -ForegroundColor Yellow
 

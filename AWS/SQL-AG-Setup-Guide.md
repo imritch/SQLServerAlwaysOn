@@ -4,34 +4,96 @@
 This guide walks you through creating a 2-node SQL Server Availability Group in AWS using:
 - 3 EC2 instances (1 Domain Controller + 2 SQL Servers)
 - Windows Server 2019
+- Multi-subnet deployment across 2 availability zones
 - gMSA for SQL Server service accounts
-- SQL Server Developer Edition
-- Windows Server Failover Cluster (WSFC)
+- SQL Server 2022 Developer Edition
+- Windows Server Failover Cluster (WSFC) with multi-subnet support
 
 **Estimated Setup Time:** 2-3 hours
+
+---
+
+## Multi-Subnet Architecture Overview
+
+This setup implements a **production-ready multi-subnet Availability Group** configuration:
+
+### Why Multi-Subnet?
+
+- **High Availability:** Nodes in different availability zones survive AZ-level failures
+- **Best Practice:** Recommended by Microsoft for production SQL Server AG deployments
+- **Disaster Recovery:** Geographic separation of replicas
+- **AWS Native:** Leverages AWS multi-AZ architecture
+
+### Key Multi-Subnet Components
+
+1. **Two Subnets in Different AZs:**
+   - Subnet 1 (10.0.1.0/24) in AZ1: DC01 + SQL01
+   - Subnet 2 (10.0.2.0/24) in AZ2: SQL02
+
+2. **Cluster Name Object (CNO) with 2 IPs:**
+   - IP 1: 10.0.1.50 (Subnet 1)
+   - IP 2: 10.0.2.50 (Subnet 2)
+   - Windows Cluster uses OR dependency (both IPs, one must be online)
+
+3. **AG Listener with 2 IPs:**
+   - IP 1: 10.0.1.51 (Subnet 1)
+   - IP 2: 10.0.2.51 (Subnet 2)
+   - Clients must use `MultiSubnetFailover=True` connection parameter
+
+4. **Enhanced Failover Settings:**
+   - CrossSubnetDelay: 1000ms (faster cross-subnet detection)
+   - CrossSubnetThreshold: 5 (balanced sensitivity)
+
+### Connection String Requirements
+
+**CRITICAL:** Always use `MultiSubnetFailover=True` for multi-subnet AG:
+
+```
+Server=SQLAGL01,59999;Database=AGTestDB;Integrated Security=True;MultiSubnetFailover=True;
+```
+
+Without this parameter, failover to the other subnet can take 20-30 seconds instead of 1-2 seconds.
 
 ---
 
 ## Architecture
 
 ```
-VPC (Default)
-├── Domain Controller (DC01) - t3.medium
-│   └── Windows Server 2019
-│   └── Active Directory Domain Services
+VPC (10.0.0.0/16) - SQL-AG-VPC
 │
-├── SQL Node 1 (SQL01) - t3.xlarge
-│   └── Windows Server 2019
-│   └── SQL Server Developer Edition
+├─── Subnet 1 (10.0.1.0/24) - AZ1 (us-east-1a)
+│    │
+│    ├── Domain Controller (DC01) - t3.medium
+│    │   └── Windows Server 2019
+│    │   └── Active Directory Domain Services
+│    │   └── IP: 10.0.1.x
+│    │
+│    ├── SQL Node 1 (SQL01) - t3.xlarge
+│    │   └── Windows Server 2019
+│    │   └── SQL Server 2022 Developer
+│    │   └── Primary Replica
+│    │   └── IP: 10.0.1.x
+│    │
+│    ├── Cluster CNO IP 1: 10.0.1.50
+│    └── AG Listener IP 1: 10.0.1.51
 │
-└── SQL Node 2 (SQL02) - t3.xlarge
-    └── Windows Server 2019
-    └── SQL Server Developer Edition
+└─── Subnet 2 (10.0.2.0/24) - AZ2 (us-east-1b)
+     │
+     ├── SQL Node 2 (SQL02) - t3.xlarge
+     │   └── Windows Server 2019
+     │   └── SQL Server 2022 Developer
+     │   └── Secondary Replica
+     │   └── IP: 10.0.2.x
+     │
+     ├── Cluster CNO IP 2: 10.0.2.50
+     └── AG Listener IP 2: 10.0.2.51
 ```
 
 **Domain:** contoso.local  
 **AG Name:** SQLAOAG01  
 **Listener Name:** SQLAGL01  
+**Listener Port:** 59999  
+**Multi-Subnet:** Yes (2 IPs for CNO, 2 IPs for Listener)  
 
 ---
 
@@ -39,11 +101,13 @@ VPC (Default)
 
 ### Step 1.1: Prepare Security Group
 
+**Note:** If using the provided CloudFormation template, the VPC, subnets, and security groups are automatically created. This section is for manual setup only.
+
 1. **Go to EC2 Console** → Security Groups
 2. **Create Security Group:**
    - Name: `SQL-AG-SG`
    - Description: `Security group for SQL Server Availability Group`
-   - VPC: Default VPC
+   - VPC: SQL-AG-VPC (or your chosen VPC)
 
 3. **Add Inbound Rules:**
 
@@ -454,7 +518,7 @@ Write-Host "`nNext: Install SQL Server on both nodes" -ForegroundColor Yellow
 **On both SQL01 and SQL02:**
 
 1. Open browser, go to: https://www.microsoft.com/en-us/sql-server/sql-server-downloads
-2. Download **SQL Server 2019 Developer Edition**
+2. Download **SQL Server 2022 Developer Edition**
 3. Run the installer:
    - Choose "Custom" installation
    - Download media to: `C:\SQLInstall`
@@ -506,10 +570,11 @@ if ($testSqlSvc -and $testSqlAgent) {
 # Step 3: Create SQL Data directories
 Write-Host "`n[3/4] Creating SQL Server directories..." -ForegroundColor Yellow
 
+# SQL Server 2022 uses MSSQL16
 $dirs = @(
-    "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\DATA",
-    "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\LOG",
-    "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP"
+    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA",
+    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\LOG",
+    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
 )
 
 foreach ($dir in $dirs) {
@@ -615,14 +680,15 @@ VALUES ('Sample Data 1'), ('Sample Data 2'), ('Sample Data 3');
 GO
 
 -- Take full backup (required before adding to AG)
+-- SQL Server 2022 uses MSSQL16
 BACKUP DATABASE AGTestDB 
-TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Full.bak'
+TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Full.bak'
 WITH FORMAT, INIT, COMPRESSION;
 GO
 
 -- Take log backup
 BACKUP LOG AGTestDB 
-TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Log.trn'
+TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Log.trn'
 WITH FORMAT, INIT, COMPRESSION;
 GO
 ```
@@ -720,8 +786,9 @@ Write-Host "$SecondaryReplica joined to AG" -ForegroundColor Green
 Write-Host "`n[4/5] Restoring database on secondary replica..." -ForegroundColor Yellow
 
 # Copy backup files to SQL02
-$backupPath = "\\SQL01\C$\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP"
-$localBackupPath = "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP"
+# SQL Server 2022 uses MSSQL16
+$backupPath = "\\SQL01\C$\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
+$localBackupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
 
 Write-Host "Restoring full backup..." -ForegroundColor Cyan
 $restoreFullScript = @"
@@ -1116,8 +1183,8 @@ Get-ChildItem "SQLSERVER:\SQL\SQL01\DEFAULT\AvailabilityGroups\SQLAOAG01"
 
 ## Document Version
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Last Updated:** October 2025  
-**Tested On:** AWS EC2, Windows Server 2019, SQL Server 2019 Developer
+**Tested On:** AWS EC2, Windows Server 2019, SQL Server 2022 Developer, Multi-Subnet Deployment
 
 

@@ -243,7 +243,7 @@ On **both SQL01 and SQL02**:
 
 1. Open browser (Server Manager → Local Server → IE Enhanced Security: Off)
 2. Go to: https://www.microsoft.com/sql-server/sql-server-downloads
-3. Download **SQL Server 2019 Developer Edition**
+3. Download **SQL Server 2022 Developer Edition**
 4. Choose **Custom** install
 5. Download media to: `C:\SQLInstall`
 
@@ -308,7 +308,8 @@ On **SQL01**:
 
 ```powershell
 # Share the backup folder (should already be done by script)
-$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\BACKUP"
+# SQL Server 2022 uses MSSQL16
+$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
 New-SmbShare -Name "SQLBackup" -Path $backupPath -FullAccess "Everyone"
 ```
 

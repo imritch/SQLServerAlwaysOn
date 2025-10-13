@@ -4,6 +4,21 @@ This package contains everything you need to set up a 2-node SQL Server Always O
 
 ---
 
+## 🎯 What's New in Version 2.0
+
+This version includes major enhancements for production-ready deployments:
+
+- ✅ **Multi-Subnet Architecture:** Nodes deployed across 2 availability zones
+- ✅ **SQL Server 2022:** Updated from SQL 2019 to SQL 2022 Developer Edition
+- ✅ **Enhanced gMSA Management:** AD security groups for easier permission management
+- ✅ **Dual IP Configuration:** CNO and AG Listener with 2 IPs (one per subnet)
+- ✅ **Improved Failover:** Optimized cross-subnet failover settings
+- ✅ **CloudFormation VPC:** Creates dedicated VPC with 2 subnets in different AZs
+
+**Migration from v1.0:** If upgrading from the previous single-subnet setup, you'll need to redeploy using the new CloudFormation template. The multi-subnet architecture requires different IP addressing and cluster configuration.
+
+---
+
 ## 📁 Package Contents
 
 ### Documentation
@@ -71,38 +86,53 @@ This package contains everything you need to set up a 2-node SQL Server Always O
 ## 📊 What You'll Build
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    AWS VPC                          │
-│                                                     │
-│  ┌──────────────┐    ┌──────────────┐             │
-│  │    DC01      │    │    SQL01     │             │
-│  │  t3.medium   │    │  t3.xlarge   │             │
-│  │  Win2019     │◄───┤  Win2019     │             │
-│  │  AD DS       │    │  SQL Server  │             │
-│  └──────────────┘    │  Primary     │             │
-│                      └──────▲───────┘             │
-│                             │                      │
-│                      ┌──────┴───────┐             │
-│                      │   SQLAGL01   │             │
-│                      │   Listener   │             │
-│                      │   Port 59999 │             │
-│                      └──────┬───────┘             │
-│                             │                      │
-│                      ┌──────▼───────┐             │
-│                      │    SQL02     │             │
-│                      │  t3.xlarge   │             │
-│                      │  Win2019     │             │
-│                      │  SQL Server  │             │
-│                      │  Secondary   │             │
-│                      └──────────────┘             │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                    AWS VPC (10.0.0.0/16)                         │
+│                                                                  │
+│  ┌─── Subnet 1 (10.0.1.0/24) - AZ1 ────────────────────────┐   │
+│  │                                                           │   │
+│  │  ┌──────────────┐    ┌──────────────┐                   │   │
+│  │  │    DC01      │    │    SQL01     │                   │   │
+│  │  │  t3.medium   │    │  t3.xlarge   │                   │   │
+│  │  │  Win2019     │◄───┤  Win2019     │                   │   │
+│  │  │  AD DS       │    │  SQL 2022    │                   │   │
+│  │  └──────────────┘    │  Primary     │                   │   │
+│  │                      └──────────────┘                   │   │
+│  │                                                           │   │
+│  │  Cluster IP: 10.0.1.50                                  │   │
+│  │  Listener IP: 10.0.1.51                                 │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                             │                                    │
+│                      ┌──────┴───────┐                            │
+│                      │   SQLAGL01   │                            │
+│                      │Multi-Subnet  │                            │
+│                      │   Listener   │                            │
+│                      │  Port 59999  │                            │
+│                      │  2 IPs (OR)  │                            │
+│                      └──────┬───────┘                            │
+│                             │                                    │
+│  ┌─── Subnet 2 (10.0.2.0/24) - AZ2 ────────────────────────┐   │
+│  │                                                           │   │
+│  │                      ┌──────▼───────┐                   │   │
+│  │                      │    SQL02     │                   │   │
+│  │                      │  t3.xlarge   │                   │   │
+│  │                      │  Win2019     │                   │   │
+│  │                      │  SQL 2022    │                   │   │
+│  │                      │  Secondary   │                   │   │
+│  │                      └──────────────┘                   │   │
+│  │                                                           │   │
+│  │  Cluster IP: 10.0.2.50                                  │   │
+│  │  Listener IP: 10.0.2.51                                 │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **Features:**
 - ✅ Active Directory with gMSA service accounts
-- ✅ Windows Server Failover Cluster (WSFC)
-- ✅ SQL Server 2019 Developer Edition
+- ✅ Windows Server Failover Cluster (WSFC) with multi-subnet support
+- ✅ SQL Server 2022 Developer Edition
+- ✅ Multi-subnet AG deployment across 2 availability zones
 - ✅ Synchronous replication with automatic failover
 - ✅ Availability Group Listener for seamless failover
 - ✅ Test database with sample data
@@ -239,9 +269,14 @@ Update in:
 
 ### Use Different SQL Version
 
-1. Download different SQL version
+Current setup uses SQL Server 2022 (MSSQL16.MSSQLSERVER).
+
+To use a different version:
+1. Download desired SQL version
 2. Update paths in `06-Install-SQLServer-Prep.ps1`
-3. Adjust instance paths (MSSQL15.MSSQLSERVER → version-specific)
+3. Adjust instance paths (MSSQL16.MSSQLSERVER → version-specific)
+   - SQL 2019: MSSQL15.MSSQLSERVER
+   - SQL 2022: MSSQL16.MSSQLSERVER
 
 ### Add More Databases
 
@@ -394,9 +429,9 @@ You'll know setup is successful when:
 
 ---
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Last Updated:** October 2025  
-**Tested On:** Windows Server 2019, SQL Server 2019 Developer, AWS EC2
+**Tested On:** Windows Server 2019, SQL Server 2022 Developer, AWS EC2, Multi-Subnet Deployment
 
 **Author's Note:** This setup is designed for learning and demos. For production use, consider additional security hardening, monitoring, backup strategies, and review AWS best practices for SQL Server workloads.
 

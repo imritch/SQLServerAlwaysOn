@@ -102,7 +102,7 @@ Use this checklist to track your progress through the setup.
 
 **On SQL01:**
 
-- [ ] SQL Server 2019 Developer Edition downloaded
+- [ ] SQL Server 2022 Developer Edition downloaded
 - [ ] Media extracted to `C:\SQLInstall`
 - [ ] Script `06-Install-SQLServer-Prep.ps1` executed
 - [ ] gMSA accounts installed on SQL01
@@ -121,7 +121,7 @@ Use this checklist to track your progress through the setup.
 
 **On SQL02:**
 
-- [ ] SQL Server 2019 Developer Edition downloaded
+- [ ] SQL Server 2022 Developer Edition downloaded
 - [ ] Media extracted to `C:\SQLInstall`
 - [ ] Script `06-Install-SQLServer-Prep.ps1` executed
 - [ ] gMSA accounts installed on SQL02
