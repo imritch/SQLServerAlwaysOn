@@ -1,0 +1,321 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SQL Server Availability Group - 3 EC2 Instances (DC + 2 SQL Nodes)'
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for RDP access
+    
+  YourIPAddress:
+    Type: String
+    Description: Your IP address for RDP access (format x.x.x.x/32)
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    ConstraintDescription: Must be a valid CIDR (e.g., 1.2.3.4/32)
+
+Resources:
+  # Security Group
+  SQLAGSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for SQL Server Availability Group
+      SecurityGroupIngress:
+        # RDP from your IP
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: !Ref YourIPAddress
+          Description: RDP Access
+        # All ICMP (ping)
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 172.31.0.0/16
+          Description: ICMP Ping
+        # DNS
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 172.31.0.0/16
+          Description: DNS TCP
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 172.31.0.0/16
+          Description: DNS UDP
+        # Active Directory - Kerberos
+        - IpProtocol: tcp
+          FromPort: 88
+          ToPort: 88
+          CidrIp: 172.31.0.0/16
+          Description: Kerberos
+        - IpProtocol: udp
+          FromPort: 88
+          ToPort: 88
+          CidrIp: 172.31.0.0/16
+          Description: Kerberos UDP
+        # Active Directory - LDAP
+        - IpProtocol: tcp
+          FromPort: 389
+          ToPort: 389
+          CidrIp: 172.31.0.0/16
+          Description: LDAP
+        - IpProtocol: udp
+          FromPort: 389
+          ToPort: 389
+          CidrIp: 172.31.0.0/16
+          Description: LDAP UDP
+        # Active Directory - LDAPS
+        - IpProtocol: tcp
+          FromPort: 636
+          ToPort: 636
+          CidrIp: 172.31.0.0/16
+          Description: LDAPS
+        # Active Directory - Global Catalog
+        - IpProtocol: tcp
+          FromPort: 3268
+          ToPort: 3269
+          CidrIp: 172.31.0.0/16
+          Description: Global Catalog
+        # SMB
+        - IpProtocol: tcp
+          FromPort: 445
+          ToPort: 445
+          CidrIp: 172.31.0.0/16
+          Description: SMB
+        # RPC
+        - IpProtocol: tcp
+          FromPort: 135
+          ToPort: 135
+          CidrIp: 172.31.0.0/16
+          Description: RPC Endpoint Mapper
+        # Dynamic RPC
+        - IpProtocol: tcp
+          FromPort: 49152
+          ToPort: 65535
+          CidrIp: 172.31.0.0/16
+          Description: Dynamic RPC
+        # SQL Server
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: 172.31.0.0/16
+          Description: SQL Server
+        # AG Endpoint
+        - IpProtocol: tcp
+          FromPort: 5022
+          ToPort: 5022
+          CidrIp: 172.31.0.0/16
+          Description: AG Endpoint
+        # AG Listener
+        - IpProtocol: tcp
+          FromPort: 59999
+          ToPort: 59999
+          CidrIp: 172.31.0.0/16
+          Description: AG Listener
+        # Windows Clustering
+        - IpProtocol: tcp
+          FromPort: 3343
+          ToPort: 3343
+          CidrIp: 172.31.0.0/16
+          Description: Cluster Service
+        - IpProtocol: udp
+          FromPort: 3343
+          ToPort: 3343
+          CidrIp: 172.31.0.0/16
+          Description: Cluster Service UDP
+      Tags:
+        - Key: Name
+          Value: SQL-AG-SecurityGroup
+        - Key: Project
+          Value: SQL-AlwaysOn-Demo
+
+  # Domain Controller Instance
+  DC01Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base}}'
+      InstanceType: t3.medium
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref SQLAGSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: DC01
+        - Key: Role
+          Value: DomainController
+        - Key: Project
+          Value: SQL-AlwaysOn-Demo
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Rename computer
+          Rename-Computer -NewName "DC01" -Force -ErrorAction SilentlyContinue
+          
+          # Disable IE Enhanced Security
+          $AdminKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
+          $UserKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}"
+          Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 0 -Force
+          Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 0 -Force
+          
+          # Create script directory
+          New-Item -Path "C:\SQLAGScripts" -ItemType Directory -Force
+          
+          # Create readme
+          "Copy setup scripts here and run 01-Setup-DomainController.ps1" | Out-File "C:\SQLAGScripts\README.txt"
+          
+          Write-Host "DC01 initialized. Copy scripts and run 01-Setup-DomainController.ps1"
+          </powershell>
+
+  # SQL Node 1
+  SQL01Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base}}'
+      InstanceType: t3.xlarge
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref SQLAGSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 100
+            VolumeType: gp3
+            DeleteOnTermination: true
+        - DeviceName: /dev/xvdf
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp3
+            DeleteOnTermination: true
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: SQL01
+        - Key: Role
+          Value: SQLServer
+        - Key: Project
+          Value: SQL-AlwaysOn-Demo
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Rename computer
+          Rename-Computer -NewName "SQL01" -Force -ErrorAction SilentlyContinue
+          
+          # Disable IE Enhanced Security
+          $AdminKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
+          $UserKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}"
+          Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 0 -Force
+          Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 0 -Force
+          
+          # Initialize data disk
+          Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -DriveLetter D -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel "SQLData" -Confirm:$false
+          
+          # Create script directory
+          New-Item -Path "C:\SQLAGScripts" -ItemType Directory -Force
+          
+          Write-Host "SQL01 initialized. Data disk formatted as D:"
+          </powershell>
+
+  # SQL Node 2
+  SQL02Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base}}'
+      InstanceType: t3.xlarge
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref SQLAGSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 100
+            VolumeType: gp3
+            DeleteOnTermination: true
+        - DeviceName: /dev/xvdf
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp3
+            DeleteOnTermination: true
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: SQL02
+        - Key: Role
+          Value: SQLServer
+        - Key: Project
+          Value: SQL-AlwaysOn-Demo
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Rename computer
+          Rename-Computer -NewName "SQL02" -Force -ErrorAction SilentlyContinue
+          
+          # Disable IE Enhanced Security
+          $AdminKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
+          $UserKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}"
+          Set-ItemProperty -Path $AdminKey -Name "IsInstalled" -Value 0 -Force
+          Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value 0 -Force
+          
+          # Initialize data disk
+          Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -DriveLetter D -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel "SQLData" -Confirm:$false
+          
+          # Create script directory
+          New-Item -Path "C:\SQLAGScripts" -ItemType Directory -Force
+          
+          Write-Host "SQL02 initialized. Data disk formatted as D:"
+          </powershell>
+
+Outputs:
+  DC01InstanceId:
+    Description: Domain Controller Instance ID
+    Value: !Ref DC01Instance
+    
+  DC01PrivateIP:
+    Description: Domain Controller Private IP
+    Value: !GetAtt DC01Instance.PrivateIp
+    
+  DC01PublicIP:
+    Description: Domain Controller Public IP
+    Value: !GetAtt DC01Instance.PublicIp
+    
+  SQL01InstanceId:
+    Description: SQL Server Node 1 Instance ID
+    Value: !Ref SQL01Instance
+    
+  SQL01PrivateIP:
+    Description: SQL Server Node 1 Private IP
+    Value: !GetAtt SQL01Instance.PrivateIp
+    
+  SQL01PublicIP:
+    Description: SQL Server Node 1 Public IP
+    Value: !GetAtt SQL01Instance.PublicIp
+    
+  SQL02InstanceId:
+    Description: SQL Server Node 2 Instance ID
+    Value: !Ref SQL02Instance
+    
+  SQL02PrivateIP:
+    Description: SQL Server Node 2 Private IP
+    Value: !GetAtt SQL02Instance.PrivateIp
+    
+  SQL02PublicIP:
+    Description: SQL Server Node 2 Public IP
+    Value: !GetAtt SQL02Instance.PublicIp
+    
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref SQLAGSecurityGroup
+    
+  NextSteps:
+    Description: What to do next
+    Value: |
+      1. RDP to DC01 using the public IP
+      2. Copy the setup scripts to C:\SQLAGScripts
+      3. Run 01-Setup-DomainController.ps1
+      4. Follow the setup guide
+
