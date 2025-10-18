@@ -86,15 +86,25 @@ Use this checklist to track your progress through the setup.
 - [ ] Script `04-Install-Failover-Clustering.ps1` executed
 - [ ] Failover Clustering feature installed
 
+**On Local Machine (AWS Secondary IP Assignment):**
+
+- [ ] Script `04b-Assign-Secondary-IPs.sh` executed from macOS/Linux terminal
+- [ ] Secondary IPs assigned to SQL01: 10.0.1.50, 10.0.1.51
+- [ ] Secondary IPs assigned to SQL02: 10.0.2.50, 10.0.2.51
+- [ ] Verified IPs in AWS EC2 console (Network Interfaces)
+- [ ] **⚠️ CRITICAL:** This must be done BEFORE creating the cluster
+
 **On SQL01 (create cluster):**
 
 - [ ] Script `05-Create-WSFC.ps1` executed
-- [ ] Cluster IP entered: ________________
+- [ ] Cluster IP 1 entered: 10.0.1.50 (Subnet 1)
+- [ ] Cluster IP 2 entered: 10.0.2.50 (Subnet 2)
 - [ ] Cluster validation run (warnings OK)
-- [ ] Cluster created: SQLCLUSTER
+- [ ] Multi-subnet cluster created: SQLCLUSTER
 - [ ] Both nodes visible in cluster: `Get-ClusterNode`
 - [ ] Cluster quorum configured
 - [ ] Verified cluster status: `Get-Cluster`
+- [ ] Verified multi-subnet parameters configured
 
 ---
 
@@ -154,13 +164,14 @@ Use this checklist to track your progress through the setup.
 - [ ] Backup files exist in `C:\...\BACKUP\`
 - [ ] Backup folder shared: `\\SQL01\SQLBackup`
 - [ ] Script `09-Create-AvailabilityGroup.ps1` executed
-- [ ] Listener IP entered: ________________
+- [ ] Listener IP 1 entered: 10.0.1.51 (Subnet 1)
+- [ ] Listener IP 2 entered: 10.0.2.51 (Subnet 2)
 - [ ] Endpoints created on both nodes
 - [ ] Availability Group SQLAOAG01 created
 - [ ] SQL02 joined to AG
 - [ ] Database restored on SQL02
 - [ ] Database joined to AG on SQL02
-- [ ] Listener SQLAGL01 created
+- [ ] Multi-subnet listener SQLAGL01 created with 2 IPs
 - [ ] No errors in script output
 
 ---
@@ -274,8 +285,12 @@ Resolution: ___________________________________________
 
 **Important IPs:**
 - DC01 Private IP: ________________
-- Cluster IP: ________________
-- Listener IP: ________________
+- SQL01 Primary IP: ________________
+- SQL02 Primary IP: ________________
+- Cluster IP 1 (Subnet 1): 10.0.1.50
+- Cluster IP 2 (Subnet 2): 10.0.2.50
+- Listener IP 1 (Subnet 1): 10.0.1.51
+- Listener IP 2 (Subnet 2): 10.0.2.51
 
 **Credentials:**
 - Domain Admin: CONTOSO\Administrator / ______________

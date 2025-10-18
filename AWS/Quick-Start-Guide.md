@@ -238,9 +238,43 @@ cd C:\SQLAGScripts
 
 ---
 
-## Step 5: Create Windows Failover Cluster
+## Step 5: Assign Secondary IPs (AWS Requirement)
 
-### 5.1: Install Clustering Feature
+**⚠️ CRITICAL STEP for AWS Multi-Subnet AG**
+
+Before creating the Windows Failover Cluster, you MUST assign secondary private IPs to your SQL nodes. Windows Cluster and AG Listener require these IPs to be pre-assigned at the AWS ENI level.
+
+### 5.1: Run IP Assignment Script
+
+On **your local machine** (not on the Windows servers):
+
+```bash
+cd /path/to/SQLServerAlwaysOn/AWS/Scripts
+
+# Make script executable (if not already)
+chmod +x 04b-Assign-Secondary-IPs.sh
+
+# Run the script (adjust stack name if different)
+./04b-Assign-Secondary-IPs.sh sql-ag-demo us-east-1
+```
+
+**What this does:**
+- Assigns 10.0.1.50 and 10.0.1.51 to SQL01 (Secondary IP 1 and Secondary IP 2)
+- Assigns 10.0.2.50 and 10.0.2.51 to SQL02 (Secondary IP 1 and Secondary IP 2)
+
+**Expected output:**
+```
+✅ SQL01 now has: Primary IP + 10.0.1.50 + 10.0.1.51
+✅ SQL02 now has: Primary IP + 10.0.2.50 + 10.0.2.51
+```
+
+✅ **Checkpoint:** Secondary IPs assigned in AWS
+
+---
+
+## Step 6: Create Windows Failover Cluster
+
+### 6.1: Install Clustering Feature
 
 On **both SQL01 and SQL02**:
 
@@ -249,7 +283,7 @@ cd C:\SQLAGScripts
 .\04-Install-Failover-Clustering.ps1
 ```
 
-### 5.2: Create Cluster
+### 6.2: Create Cluster
 
 On **SQL01 only**:
 
@@ -257,17 +291,18 @@ On **SQL01 only**:
 cd C:\SQLAGScripts
 .\05-Create-WSFC.ps1
 
-# When prompted for Cluster IP:
-# Pick an unused IP in your subnet (e.g., 172.31.10.50)
+# When prompted for Cluster IPs, use the ones assigned in Step 5:
+# Cluster IP 1 (Subnet 1): 10.0.1.100
+# Cluster IP 2 (Subnet 2): 10.0.2.100
 ```
 
 ✅ **Checkpoint:** Cluster created and both nodes online
 
 ---
 
-## Step 6: Install SQL Server
+## Step 7: Install SQL Server
 
-### 6.1: Download SQL Server
+### 7.1: Download SQL Server
 
 On **both SQL01 and SQL02**:
 
@@ -277,7 +312,7 @@ On **both SQL01 and SQL02**:
 4. Choose **Custom** install
 5. Download media to: `C:\SQLInstall`
 
-### 6.2: Prepare for Installation
+### 7.2: Prepare for Installation
 
 On **both SQL01 and SQL02**:
 
@@ -286,7 +321,7 @@ cd C:\SQLAGScripts
 .\06-Install-SQLServer-Prep.ps1
 ```
 
-### 6.3: Run SQL Setup
+### 7.3: Run SQL Setup
 
 On **both SQL01 and SQL02**:
 
@@ -308,7 +343,7 @@ On **both SQL01 and SQL02**:
    - SQL Administrators: Add `CONTOSO\sqladmin` and `BUILTIN\Administrators`
 9. **Install** (~15-20 minutes)
 
-### 6.4: Enable AlwaysOn
+### 7.4: Enable AlwaysOn
 
 On **both SQL01 and SQL02** after SQL installation completes:
 
@@ -321,9 +356,9 @@ cd C:\SQLAGScripts
 
 ---
 
-## Step 7: Create Availability Group
+## Step 8: Create Availability Group
 
-### 7.1: Create Test Database
+### 8.1: Create Test Database
 
 On **SQL01**, open **SQL Server Management Studio** (SSMS) and run:
 
@@ -332,7 +367,7 @@ On **SQL01**, open **SQL Server Management Studio** (SSMS) and run:
 sqlcmd -S SQL01 -i C:\SQLAGScripts\08-Create-TestDatabase.sql
 ```
 
-### 7.2: Copy Backup Files
+### 8.2: Copy Backup Files
 
 On **SQL01**:
 
@@ -343,7 +378,7 @@ $backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\B
 New-SmbShare -Name "SQLBackup" -Path $backupPath -FullAccess "Everyone"
 ```
 
-### 7.3: Create Availability Group
+### 8.3: Create Availability Group
 
 On **SQL01**:
 
@@ -351,17 +386,18 @@ On **SQL01**:
 cd C:\SQLAGScripts
 .\09-Create-AvailabilityGroup.ps1
 
-# When prompted for Listener IP:
-# Pick an unused IP in your subnet (e.g., 172.31.10.51)
+# When prompted for Listener IPs, use the ones assigned in Step 5:
+# Listener IP 1 (Subnet 1): 10.0.1.101
+# Listener IP 2 (Subnet 2): 10.0.2.101
 ```
 
 ✅ **Checkpoint:** Availability Group created with listener
 
 ---
 
-## Step 8: Validate Setup
+## Step 9: Validate Setup
 
-### 8.1: Check AG Health
+### 9.1: Check AG Health
 
 On **SQL01** in SSMS:
 
@@ -375,7 +411,7 @@ On **SQL01** in SSMS:
 - Database: SYNCHRONIZED
 - Listener: Shows DNS name and IP
 
-### 8.2: Test Listener Connection
+### 9.2: Test Listener Connection
 
 From any domain-joined machine:
 
@@ -387,7 +423,7 @@ nslookup SQLAGL01.contoso.local
 sqlcmd -S SQLAGL01,59999 -Q "SELECT @@SERVERNAME, DB_NAME()"
 ```
 
-### 8.3: Test Failover
+### 9.3: Test Failover
 
 On **SQL01** in SSMS:
 
@@ -414,7 +450,7 @@ sqlcmd -S SQLAGL01,59999 -Q "SELECT @@SERVERNAME"
 
 ---
 
-## Step 9: Cleanup
+## Step 10: Cleanup
 
 ### When Done with Demo:
 

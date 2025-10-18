@@ -28,9 +28,16 @@ This folder contains all PowerShell and SQL scripts needed to set up a 2-node SQ
    - Run as CONTOSO\Administrator on both nodes
    - Installs Failover Clustering feature
 
+**4b. 04b-Assign-Secondary-IPs.sh** (Run from your local machine)
+   - **⚠️ CRITICAL for AWS Multi-Subnet AG**
+   - Run BEFORE creating the cluster
+   - Assigns secondary private IPs to SQL nodes for Cluster CNO and AG Listener
+   - Bash script (macOS/Linux)
+   - Usage: `./04b-Assign-Secondary-IPs.sh sql-ag-demo us-east-1`
+
 5. **05-Create-WSFC.ps1** (SQL01 only)
    - Run as CONTOSO\Administrator
-   - Creates Windows Failover Cluster
+   - Creates Windows Failover Cluster with multi-subnet support
 
 ### Phase 4: Install SQL Server
 
@@ -90,6 +97,7 @@ Before running scripts:
 2. Security group configured with required ports
 3. RDP access working to all instances
 4. Source/Dest check disabled on SQL instances
+5. **Secondary IPs assigned** (run 04b-Assign-Secondary-IPs.sh from local machine before Step 5)
 
 ### Troubleshooting
 
@@ -117,7 +125,8 @@ You can modify the scripts to hardcode these values if preferred.
 | 02-Configure-AD.ps1 | Configure AD for SQL AG | DC01 | Script 01 complete |
 | 03-Join-Domain.ps1 | Join to domain | SQL01, SQL02 | Script 02 complete |
 | 04-Install-Failover-Clustering.ps1 | Install clustering | SQL01, SQL02 | Script 03 complete |
-| 05-Create-WSFC.ps1 | Create WSFC | SQL01 | Script 04 complete |
+| 04b-Assign-Secondary-IPs.sh | Assign AWS ENI IPs | Local machine | Script 04 complete |
+| 05-Create-WSFC.ps1 | Create WSFC | SQL01 | Script 04b complete |
 | 06-Install-SQLServer-Prep.ps1 | Prepare for SQL install | SQL01, SQL02 | Script 05 complete |
 | 07-Enable-AlwaysOn.ps1 | Enable AlwaysOn | SQL01, SQL02 | SQL Server installed |
 | 08-Create-TestDatabase.sql | Create test DB | SQL01 | Script 07 complete |
