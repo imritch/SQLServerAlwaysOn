@@ -42,10 +42,19 @@ aws cloudformation describe-stacks \
 ### Option B: Using AWS CLI
 
 ```bash
-# Get your public IP
+# Get your public IP (choose based on your OS)
+# Linux/WSL:
 MY_IP=$(curl -s ifconfig.me)/32
 
+# macOS (if above fails):
+MY_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32
+
+# Verify your IP
+echo $MY_IP
+
 # Deploy stack
+# Replace YOUR_KEY_NAME with your actual EC2 key pair name (without .pem extension)
+# To check available key pairs: aws ec2 describe-key-pairs --query 'KeyPairs[*].KeyName' --output table
 aws cloudformation create-stack \
   --stack-name sql-ag-demo \
   --template-body file://SQL-AG-CloudFormation.yaml \
@@ -54,16 +63,23 @@ aws cloudformation create-stack \
     ParameterKey=YourIPAddress,ParameterValue=$MY_IP \
   --region us-east-1
 
-# Wait for completion
+# Track stack creation progress (run in separate terminal)
+watch -n 5 'aws cloudformation describe-stacks --stack-name sql-ag-demo --region us-east-1 --query "Stacks[0].StackStatus" --output text'
+
+# Or use this command to see detailed events
+while true; do clear; aws cloudformation describe-stack-events --stack-name sql-ag-demo --region us-east-1 --max-items 15 --query 'StackEvents[*].[Timestamp,ResourceStatus,LogicalResourceId]' --output table; sleep 5; done
+
+# Wait for completion (blocks until done)
 aws cloudformation wait stack-create-complete \
   --stack-name sql-ag-demo \
   --region us-east-1
 
-# Get outputs
+# Get outputs in table format
 aws cloudformation describe-stacks \
   --stack-name sql-ag-demo \
   --region us-east-1 \
-  --query 'Stacks[0].Outputs'
+  --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+  --output table
 ```
 
 ---
@@ -90,7 +106,7 @@ From CloudFormation Outputs, note:
 
 # Get all outputs in a nice table
 aws cloudformation describe-stacks \
-  --stack-name sql-ag-demo-1 \
+  --stack-name sql-ag-demo \
   --region us-east-1 \
   --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
   --output table
@@ -177,6 +193,7 @@ cd C:\SQLAGScripts
 # When prompted:
 # DC IP: <DC01PrivateIP from Step 2>
 # Domain Password: <your CONTOSO\Administrator password>
+# Its the password you got when you created the EC2 instances and used aws ec2 get-password-data to get the password for the DC01 instance. 
 # Computer Name: SQL01
 ```
 
@@ -205,6 +222,19 @@ From now on, RDP to SQL01 and SQL02 as:
 - Password: <your domain password>
 
 ✅ **Checkpoint:** All machines joined to domain
+
+## Step 4.5: Update gMSA Permissions
+
+On DC01:
+
+```powershell
+cd C:\SQLAGScripts
+.\02b-Update-gMSA-Permissions.ps1
+```
+
+
+✅ **Checkpoint:** gMSA permissions updated
+
 
 ---
 
@@ -408,6 +438,24 @@ aws cloudformation wait stack-delete-complete --stack-name sql-ag-demo
 ---
 
 ## Troubleshooting
+
+### Issue: macOS - Can't get public IP
+If `curl ifconfig.me` fails:
+```bash
+# Use AWS's service instead
+MY_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32
+echo $MY_IP
+```
+
+### Issue: Can't track CloudFormation stack progress
+Use these commands:
+```bash
+# Simple status check
+aws cloudformation describe-stacks --stack-name sql-ag-demo --query "Stacks[0].StackStatus" --output text
+
+# Detailed event stream (auto-refresh every 5 seconds)
+while true; do clear; aws cloudformation describe-stack-events --stack-name sql-ag-demo --max-items 15 --query 'StackEvents[*].[Timestamp,ResourceStatus,LogicalResourceId]' --output table; sleep 5; done
+```
 
 ### Issue: Can't RDP to instances
 - Check your IP hasn't changed

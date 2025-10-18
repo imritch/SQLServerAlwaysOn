@@ -63,12 +63,19 @@ This version includes major enhancements for production-ready deployments:
 
 1. **Deploy Infrastructure (5 min)**
    ```bash
+   # Get your public IP (macOS/Linux)
+   MY_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32
+   
+   # Deploy stack (replace YOUR_KEY with your actual EC2 key pair name)
    aws cloudformation create-stack \
      --stack-name sql-ag-demo \
      --template-body file://SQL-AG-CloudFormation.yaml \
      --parameters \
        ParameterKey=KeyPairName,ParameterValue=YOUR_KEY \
-       ParameterKey=YourIPAddress,ParameterValue=YOUR_IP/32
+       ParameterKey=YourIPAddress,ParameterValue=$MY_IP
+   
+   # Track progress
+   watch -n 5 'aws cloudformation describe-stacks --stack-name sql-ag-demo --query "Stacks[0].StackStatus" --output text'
    ```
 
 2. **Follow Quick-Start-Guide.md** (2-3 hours)
@@ -148,9 +155,10 @@ This version includes major enhancements for production-ready deployments:
 - Budget: ~$0.38/hour
 
 ### Local Requirements
-- RDP client
+- RDP client (Microsoft Remote Desktop for macOS, or built-in for Windows)
 - Text editor
-- AWS CLI (optional, for CLI deployment)
+- AWS CLI (for CLI deployment)
+- **macOS users:** If `curl ifconfig.me` fails, use `curl https://checkip.amazonaws.com` instead
 
 ### Knowledge Requirements
 - Basic Windows Server administration
@@ -294,6 +302,19 @@ ALTER AVAILABILITY GROUP [SQLAOAG01] ADD DATABASE [NewDB];
 ---
 
 ## 🐛 Troubleshooting Quick Reference
+
+### macOS: Can't Get Public IP
+If `curl ifconfig.me` fails on macOS, use alternatives:
+```bash
+# Option 1 (recommended for AWS)
+MY_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32
+
+# Option 2
+MY_IP=$(curl -s https://api.ipify.org)/32
+
+# Option 3
+MY_IP=$(curl -s https://icanhazip.com | tr -d '\n')/32
+```
 
 ### Can't Connect to Instances
 - Check security group has your current IP
