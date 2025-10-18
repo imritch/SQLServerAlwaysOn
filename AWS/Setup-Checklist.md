@@ -89,10 +89,10 @@ Use this checklist to track your progress through the setup.
 **On Local Machine (AWS Secondary IP Assignment):**
 
 - [ ] Script `04b-Assign-Secondary-IPs.sh` executed from macOS/Linux terminal
-- [ ] Secondary IPs assigned to SQL01: 10.0.1.50, 10.0.1.51
-- [ ] Secondary IPs assigned to SQL02: 10.0.2.50, 10.0.2.51
+- [ ] Secondary IPs assigned to SQL01 at AWS level: 10.0.1.50, 10.0.1.51
+- [ ] Secondary IPs assigned to SQL02 at AWS level: 10.0.2.50, 10.0.2.51
 - [ ] Verified IPs in AWS EC2 console (Network Interfaces)
-- [ ] **⚠️ CRITICAL:** This must be done BEFORE creating the cluster
+- [ ] **⚠️ IMPORTANT:** Do NOT manually configure these IPs in Windows - Failover Cluster will handle it
 
 **On SQL01 (create cluster):**
 

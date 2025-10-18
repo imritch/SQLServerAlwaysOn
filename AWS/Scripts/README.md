@@ -31,9 +31,10 @@ This folder contains all PowerShell and SQL scripts needed to set up a 2-node SQ
 **4b. 04b-Assign-Secondary-IPs.sh** (Run from your local machine)
    - **⚠️ CRITICAL for AWS Multi-Subnet AG**
    - Run BEFORE creating the cluster
-   - Assigns secondary private IPs to SQL nodes for Cluster CNO and AG Listener
+   - Assigns secondary private IPs to SQL nodes at AWS ENI level
    - Bash script (macOS/Linux)
    - Usage: `./04b-Assign-Secondary-IPs.sh sql-ag-demo us-east-1`
+   - **Note:** Do NOT configure these IPs inside Windows - Failover Cluster handles it automatically
 
 5. **05-Create-WSFC.ps1** (SQL01 only)
    - Run as CONTOSO\Administrator

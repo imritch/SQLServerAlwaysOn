@@ -268,7 +268,13 @@ chmod +x 04b-Assign-Secondary-IPs.sh
 ✅ SQL02 now has: Primary IP + 10.0.2.50 + 10.0.2.51
 ```
 
-✅ **Checkpoint:** Secondary IPs assigned in AWS
+### 5.2: Important Note About Windows Configuration
+
+**⚠️ DO NOT manually configure these IPs in Windows!**
+
+The secondary IPs are assigned at the AWS ENI level only. Windows Failover Cluster will automatically configure them when it brings cluster resources online. Manually adding them to Windows will break network connectivity.
+
+✅ **Checkpoint:** Secondary IPs assigned in AWS (Windows Cluster will handle the rest)
 
 ---
 
