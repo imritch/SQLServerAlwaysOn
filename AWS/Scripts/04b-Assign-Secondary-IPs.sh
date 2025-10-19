@@ -84,8 +84,8 @@ echo ""
 
 # Assign secondary IPs to SQL01 (Subnet 1)
 echo "Assigning to SQL01 (Subnet 1):"
-echo "  - 10.0.1.50 (Secondary IP 1)"
-echo "  - 10.0.1.51 (Secondary IP 2)"
+echo "  - 10.0.1.50 (For WSFC Cluster IP)"
+echo "  - 10.0.1.51 (For AG Listener IP)"
 
 if aws ec2 assign-private-ip-addresses \
   --network-interface-id "$SQL01_ENI" \
@@ -100,8 +100,8 @@ echo ""
 
 # Assign secondary IPs to SQL02 (Subnet 2)
 echo "Assigning to SQL02 (Subnet 2):"
-echo "  - 10.0.2.50 (Secondary IP 1)"
-echo "  - 10.0.2.51 (Secondary IP 2)"
+echo "  - 10.0.2.50 (For WSFC Cluster IP)"
+echo "  - 10.0.2.51 (For AG Listener IP)"
 
 if aws ec2 assign-private-ip-addresses \
   --network-interface-id "$SQL02_ENI" \
@@ -137,16 +137,19 @@ echo ""
 echo "✅ SQL01 now has: Primary IP + 10.0.1.50 + 10.0.1.51"
 echo "✅ SQL02 now has: Primary IP + 10.0.2.50 + 10.0.2.51"
 echo ""
-echo "📋 Next Steps:"
-echo "1. RDP to SQL01 as CONTOSO\\Administrator"
-echo "2. Run 05-Create-WSFC.ps1"
-echo "3. When prompted, use these Cluster IPs:"
-echo "   - Cluster IP 1: 10.0.1.100"
-echo "   - Cluster IP 2: 10.0.2.100"
+echo "📋 IP Address Allocation:"
+echo "  Cluster IPs (for WSFC):"
+echo "    - Subnet 1: 10.0.1.50"
+echo "    - Subnet 2: 10.0.2.50"
 echo ""
-echo "4. Later, when creating AG Listener, use:"
-echo "   - Listener IP 1: 10.0.1.101"
-echo "   - Listener IP 2: 10.0.2.101"
+echo "  Listener IPs (for AG):"
+echo "    - Subnet 1: 10.0.1.51"
+echo "    - Subnet 2: 10.0.2.51"
+echo ""
+echo "📋 Next Steps:"
+echo "1. Run 04c-Configure-Secondary-IPs-Windows.ps1 on BOTH SQL01 and SQL02"
+echo "2. Run 05-Create-WSFC.ps1 on SQL01"
+echo "   Use Cluster IPs: 10.0.1.50 and 10.0.2.50"
 echo ""
 
 

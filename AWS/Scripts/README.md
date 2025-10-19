@@ -26,19 +26,26 @@ This folder contains all PowerShell and SQL scripts needed to set up a 2-node SQ
 
 4. **04-Install-Failover-Clustering.ps1** (SQL01 and SQL02)
    - Run as CONTOSO\Administrator on both nodes
-   - Installs Failover Clustering feature
+   - Installs Failover Clustering feature and enables firewall rules
 
 **4b. 04b-Assign-Secondary-IPs.sh** (Run from your local machine)
    - **⚠️ CRITICAL for AWS Multi-Subnet AG**
-   - Run BEFORE creating the cluster
+   - Run AFTER step 4
    - Assigns secondary private IPs to SQL nodes at AWS ENI level
    - Bash script (macOS/Linux)
    - Usage: `./04b-Assign-Secondary-IPs.sh sql-ag-demo us-east-1`
-   - **Note:** Do NOT configure these IPs inside Windows - Failover Cluster handles it automatically
+
+**4c. 04c-Configure-Secondary-IPs-Windows.ps1** (SQL01 and SQL02)
+   - **⚠️ REQUIRED - Run AFTER 04b**
+   - Run as Administrator on BOTH nodes
+   - Configures Windows to recognize the secondary IPs
+   - Converts network adapter from DHCP to static IP
+   - Auto-detects node and adds appropriate secondary IPs
 
 5. **05-Create-WSFC.ps1** (SQL01 only)
    - Run as CONTOSO\Administrator
    - Creates Windows Failover Cluster with multi-subnet support
+   - Run only AFTER 04c is complete on both nodes
 
 ### Phase 4: Install SQL Server
 
@@ -73,12 +80,27 @@ This folder contains all PowerShell and SQL scripts needed to set up a 2-node SQ
 
 ## Important Notes
 
-### IP Addresses
+### IP Addresses (AWS-Specific Requirement)
 
-You'll need to provide the following IPs when running scripts:
-- DC01 private IP (for DNS configuration)
-- Cluster IP (unused IP in your subnet)
-- AG Listener IP (unused IP in your subnet)
+**⚠️ CRITICAL AWS DIFFERENCE:** Unlike on-premises clustering, AWS requires all virtual IPs (cluster IPs and listener IPs) to be pre-assigned as secondary private IPs to the ENIs (Elastic Network Interfaces) BEFORE using them in Windows clustering.
+
+**Why?** AWS manages IP addresses at the ENI level. The cluster cannot dynamically claim IPs without them being pre-assigned to the ENI. This is due to how AWS handles ARP and routing at the VPC level.
+
+**IP Allocation Strategy (from script 04b):**
+- **SQL01 (10.0.1.x subnet):**
+  - Primary IP: Auto-assigned (e.g., 10.0.1.107)
+  - Secondary IP 1: 10.0.1.50 → Used for WSFC Cluster IP
+  - Secondary IP 2: 10.0.1.51 → Used for AG Listener IP
+
+- **SQL02 (10.0.2.x subnet):**
+  - Primary IP: Auto-assigned (e.g., 10.0.2.239)
+  - Secondary IP 1: 10.0.2.50 → Used for WSFC Cluster IP
+  - Secondary IP 2: 10.0.2.51 → Used for AG Listener IP
+
+**Other IPs needed:**
+- DC01 private IP (for DNS configuration in step 03)
+
+**Reference:** [AWS Documentation - Configure Secondary Private IPv4 Addresses](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/config-windows-multiple-ip.html) and [Migrating Windows Failover Clusters](https://docs.aws.amazon.com/prescriptive-guidance/latest/migration-microsoft-workloads-aws/migrating-failover-workloads.html)
 
 ### Credentials
 
@@ -95,10 +117,10 @@ Default credentials created by scripts:
 
 Before running scripts:
 1. All EC2 instances created and running
-2. Security group configured with required ports
+2. Security group configured with required ports (run add-security-group-rules.sh with correct VPC CIDR)
 3. RDP access working to all instances
 4. Source/Dest check disabled on SQL instances
-5. **Secondary IPs assigned** (run 04b-Assign-Secondary-IPs.sh from local machine before Step 5)
+5. **Secondary IPs assigned in AWS AND configured in Windows** (steps 04b and 04c)
 
 ### Troubleshooting
 
@@ -127,7 +149,8 @@ You can modify the scripts to hardcode these values if preferred.
 | 03-Join-Domain.ps1 | Join to domain | SQL01, SQL02 | Script 02 complete |
 | 04-Install-Failover-Clustering.ps1 | Install clustering | SQL01, SQL02 | Script 03 complete |
 | 04b-Assign-Secondary-IPs.sh | Assign AWS ENI IPs | Local machine | Script 04 complete |
-| 05-Create-WSFC.ps1 | Create WSFC | SQL01 | Script 04b complete |
+| 04c-Configure-Secondary-IPs-Windows.ps1 | Configure IPs in Windows | SQL01, SQL02 | Script 04b complete |
+| 05-Create-WSFC.ps1 | Create WSFC | SQL01 | Script 04c complete on both nodes |
 | 06-Install-SQLServer-Prep.ps1 | Prepare for SQL install | SQL01, SQL02 | Script 05 complete |
 | 07-Enable-AlwaysOn.ps1 | Enable AlwaysOn | SQL01, SQL02 | SQL Server installed |
 | 08-Create-TestDatabase.sql | Create test DB | SQL01 | Script 07 complete |

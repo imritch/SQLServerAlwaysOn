@@ -4,8 +4,8 @@
 $ErrorActionPreference = "Stop"
 
 $ClusterName = "SQLCLUSTER"
-$Node1 = "SQL01"
-$Node2 = "SQL02"
+$Node1 = "SQL01.contoso.local"
+$Node2 = "SQL02.contoso.local"
 
 Write-Host "===== Creating Windows Server Failover Cluster (Multi-Subnet) =====" -ForegroundColor Green
 Write-Host "`nIMPORTANT: Multi-subnet cluster requires 2 IP addresses (one per subnet)" -ForegroundColor Yellow
@@ -13,11 +13,21 @@ Write-Host "Check CloudFormation outputs for recommended IPs" -ForegroundColor C
 
 # Get subnet information
 Write-Host "`nSubnet Information:" -ForegroundColor Cyan
-Write-Host "  Subnet 1 (SQL01): 10.0.1.0/24 - use IP like 10.0.1.50" -ForegroundColor White
-Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24 - use IP like 10.0.2.50" -ForegroundColor White
+Write-Host "  Subnet 1 (SQL01): 10.0.1.0/24" -ForegroundColor White
+Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24" -ForegroundColor White
+Write-Host "`nPre-assigned Secondary IPs:" -ForegroundColor Yellow
+Write-Host "  Cluster IPs: 10.0.1.50, 10.0.2.50" -ForegroundColor White
+Write-Host "  Listener IPs: 10.0.1.51, 10.0.2.51 (for AG Listener - use later)" -ForegroundColor White
 
-$ClusterIP1 = Read-Host "`nEnter unused IP for cluster in Subnet 1 (e.g., 10.0.1.50)"
-$ClusterIP2 = Read-Host "Enter unused IP for cluster in Subnet 2 (e.g., 10.0.2.50)"
+$ClusterIP1 = Read-Host "`nEnter cluster IP for Subnet 1 (press Enter for 10.0.1.50)"
+if ([string]::IsNullOrWhiteSpace($ClusterIP1)) {
+    $ClusterIP1 = "10.0.1.50"
+}
+
+$ClusterIP2 = Read-Host "Enter cluster IP for Subnet 2 (press Enter for 10.0.2.50)"
+if ([string]::IsNullOrWhiteSpace($ClusterIP2)) {
+    $ClusterIP2 = "10.0.2.50"
+}
 
 Write-Host "`n===== Multi-Subnet Configuration =====" -ForegroundColor Green
 Write-Host "Cluster Name: $ClusterName" -ForegroundColor Cyan

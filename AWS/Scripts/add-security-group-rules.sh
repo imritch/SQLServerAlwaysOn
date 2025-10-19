@@ -7,10 +7,12 @@ set -e
 # Configuration
 STACK_NAME="${1:-sql-ag-demo}"
 REGION="${2:-us-east-1}"
+VPC_CIDR="${3:-10.0.0.0/16}"
 
 echo "===== Adding Security Group Rules ====="
 echo "Stack: $STACK_NAME"
 echo "Region: $REGION"
+echo "VPC CIDR: $VPC_CIDR"
 echo ""
 
 # Get security group name from CloudFormation
@@ -60,20 +62,22 @@ add_rule() {
 }
 
 echo "[2/3] Adding DNS rules..."
-add_rule tcp 53 172.31.0.0/16 "DNS TCP"
-add_rule udp 53 172.31.0.0/16 "DNS UDP"
+add_rule tcp 53 "$VPC_CIDR" "DNS TCP"
+add_rule udp 53 "$VPC_CIDR" "DNS UDP"
 
 echo ""
-echo "[3/3] Adding Active Directory rules..."
-add_rule tcp 88 172.31.0.0/16 "Kerberos TCP"
-add_rule udp 88 172.31.0.0/16 "Kerberos UDP"
-add_rule tcp 389 172.31.0.0/16 "LDAP"
-add_rule udp 389 172.31.0.0/16 "LDAP UDP"
-add_rule tcp 636 172.31.0.0/16 "LDAPS"
-add_rule tcp 3268-3269 172.31.0.0/16 "Global Catalog"
-add_rule tcp 445 172.31.0.0/16 "SMB"
-add_rule tcp 135 172.31.0.0/16 "RPC"
-add_rule tcp 49152-65535 172.31.0.0/16 "Dynamic RPC"
+echo "[3/3] Adding Active Directory and Clustering rules..."
+add_rule tcp 88 "$VPC_CIDR" "Kerberos TCP"
+add_rule udp 88 "$VPC_CIDR" "Kerberos UDP"
+add_rule tcp 389 "$VPC_CIDR" "LDAP"
+add_rule udp 389 "$VPC_CIDR" "LDAP UDP"
+add_rule tcp 636 "$VPC_CIDR" "LDAPS"
+add_rule tcp 3268-3269 "$VPC_CIDR" "Global Catalog"
+add_rule tcp 445 "$VPC_CIDR" "SMB"
+add_rule tcp 135 "$VPC_CIDR" "RPC"
+add_rule tcp 49152-65535 "$VPC_CIDR" "Dynamic RPC"
+add_rule udp 3343 "$VPC_CIDR" "Cluster Service UDP"
+add_rule tcp 5985 "$VPC_CIDR" "WinRM HTTP"
 
 echo ""
 echo "===== Security Group Rules Added Successfully! ====="

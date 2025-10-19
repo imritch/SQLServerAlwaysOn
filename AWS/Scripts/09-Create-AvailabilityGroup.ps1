@@ -21,11 +21,22 @@ Write-Host "Check CloudFormation outputs for recommended IPs" -ForegroundColor C
 
 # Get subnet information
 Write-Host "`nSubnet Information:" -ForegroundColor Cyan
-Write-Host "  Subnet 1 (SQL01): 10.0.1.0/24 - use IP like 10.0.1.51" -ForegroundColor White
-Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24 - use IP like 10.0.2.51" -ForegroundColor White
+Write-Host "  Subnet 1 (SQL01): 10.0.1.0/24" -ForegroundColor White
+Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24" -ForegroundColor White
+Write-Host "`nPre-assigned Secondary IPs for Listener:" -ForegroundColor Yellow
+Write-Host "  Listener IP 1: 10.0.1.51" -ForegroundColor White
+Write-Host "  Listener IP 2: 10.0.2.51" -ForegroundColor White
+Write-Host "`n(These were assigned in step 04b and configured in step 04c)" -ForegroundColor Cyan
 
-$ListenerIP1 = Read-Host "`nEnter unused IP for AG Listener in Subnet 1 (e.g., 10.0.1.51)"
-$ListenerIP2 = Read-Host "Enter unused IP for AG Listener in Subnet 2 (e.g., 10.0.2.51)"
+$ListenerIP1 = Read-Host "`nEnter AG Listener IP for Subnet 1 (press Enter for 10.0.1.51)"
+if ([string]::IsNullOrWhiteSpace($ListenerIP1)) {
+    $ListenerIP1 = "10.0.1.51"
+}
+
+$ListenerIP2 = Read-Host "Enter AG Listener IP for Subnet 2 (press Enter for 10.0.2.51)"
+if ([string]::IsNullOrWhiteSpace($ListenerIP2)) {
+    $ListenerIP2 = "10.0.2.51"
+}
 
 Write-Host "`n===== Multi-Subnet AG Configuration =====" -ForegroundColor Green
 Write-Host "AG Name: $AGName" -ForegroundColor Cyan
