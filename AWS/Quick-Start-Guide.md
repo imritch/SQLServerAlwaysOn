@@ -22,7 +22,7 @@
 
 ```bash
 
-aws cloudformation create-stack   --stack-name sql-ag-demo-1   --template-body file://SQL-AG-CloudFormation.yaml   --parameters     ParameterKey=KeyPairName,ParameterValue=sql-ag-demo-key     ParameterKey=YourIPAddress,ParameterValue=$MY_IP   --region us-east-1
+aws cloudformation create-stack   --stack-name sql-ag-demo   --template-body file://SQL-AG-CloudFormation.yaml   --parameters     ParameterKey=KeyPairName,ParameterValue=sql-ag-demo-key     ParameterKey=YourIPAddress,ParameterValue=$MY_IP   --region us-east-1
 
 ```
 
@@ -32,7 +32,7 @@ aws cloudformation create-stack   --stack-name sql-ag-demo-1   --template-body f
 
 # Get all outputs in a nice table
 aws cloudformation describe-stacks \
-  --stack-name sql-ag-demo-1 \
+  --stack-name sql-ag-demo \
   --region us-east-1 \
   --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
   --output table
@@ -161,6 +161,15 @@ cd C:\SQLAGScripts
 ```
 
 **Wait for automatic restart (~5 minutes)**
+### Execute the script again after first reboot to continue the setup
+
+```powershell
+# In PowerShell on DC01
+cd C:\SQLAGScripts
+.\01-Setup-DomainController.ps1
+```
+
+
 
 ### 3.4: Configure Active Directory
 
