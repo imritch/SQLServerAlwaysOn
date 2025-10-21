@@ -74,6 +74,13 @@ aws ec2 authorize-security-group-ingress \
   --ip-permissions IpProtocol=tcp,FromPort=5985,ToPort=5986,IpRanges="[{CidrIp=$VPC_CIDR,Description='WinRM'}]" \
   --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
 
+# Active Directory Web Services (ADWS) - TCP 9389
+echo "Adding ADWS (TCP 9389)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=tcp,FromPort=9389,ToPort=9389,IpRanges="[{CidrIp=$VPC_CIDR,Description='Active Directory Web Services'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
 echo ""
 echo "[3/3] Verifying security group rules..."
 echo ""

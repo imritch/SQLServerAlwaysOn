@@ -136,6 +136,16 @@ Write-Host "Joining domain via DC: $DCHostname" -ForegroundColor Cyan
 try {
     Add-Computer -DomainName $DomainName -Server $DCHostname -Credential $Credential -Force -ErrorAction Stop
     
+    # Install RSAT AD PowerShell tools (needed for gMSA and AD cmdlets later)
+    Write-Host "`n[6/5] Installing RSAT Active Directory PowerShell module..." -ForegroundColor Yellow
+    try {
+        Install-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop | Out-Null
+        Write-Host "RSAT AD PowerShell module installed successfully" -ForegroundColor Green
+    } catch {
+        Write-Host "Warning: Could not install RSAT AD PowerShell module: $_" -ForegroundColor Yellow
+        Write-Host "You can install it later from Server Manager" -ForegroundColor Cyan
+    }
+    
     Write-Host "`n===== Domain Join Complete! =====" -ForegroundColor Green
     Write-Host "Computer will restart in 15 seconds..." -ForegroundColor Yellow
     Write-Host "After restart, login as: CONTOSO\Administrator" -ForegroundColor Cyan

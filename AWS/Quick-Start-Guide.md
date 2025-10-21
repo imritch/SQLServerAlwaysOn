@@ -5,6 +5,21 @@
 
 ---
 
+## Step 0: Prepare Scripts (First Time Only)
+
+**⚠️ IMPORTANT:** Before using the scripts, fix line endings for Windows compatibility:
+
+```bash
+cd SQLServerAlwaysOn/AWS/Scripts
+./Fix-LineEndings.sh
+```
+
+This converts scripts from Unix (LF) to Windows (CRLF) line endings, preventing PowerShell parsing errors.
+
+**You only need to do this once!** After conversion, the scripts will work correctly on Windows.
+
+---
+
 ## Step 1: Deploy CloudFormation Stack
 
 ### Option A: Using AWS Console
@@ -234,9 +249,16 @@ From now on, RDP to SQL01 and SQL02 as:
 
 ✅ **Checkpoint:** All machines joined to domain
 
+**✨ What Just Happened Automatically:**
+
+The `03-Join-Domain.ps1` script automatically configured:
+1. ✅ **DNS suffix settings** - Enables short name resolution (e.g., "SQL02" works)
+2. ✅ **RSAT AD PowerShell tools** - Installs Active Directory cmdlets for gMSA
+3. ✅ **Domain membership** - Joins node to contoso.local
+
 **⚠️ IMPORTANT - DNS Suffix Configuration:**
 
-The updated `03-Join-Domain.ps1` script now automatically configures DNS suffix settings required for clustering. This enables short name resolution (e.g., "SQL02" instead of "SQL02.contoso.local"), which is **CRITICAL** for Windows Failover Clustering.
+The updated `03-Join-Domain.ps1` script automatically configures DNS suffix settings required for clustering. This enables short name resolution (e.g., "SQL02" instead of "SQL02.contoso.local"), which is **CRITICAL** for Windows Failover Clustering.
 
 If you joined the domain before this update, or if you encounter "Computer SQL02 could not be reached" errors during cluster creation, run this on **BOTH** nodes:
 

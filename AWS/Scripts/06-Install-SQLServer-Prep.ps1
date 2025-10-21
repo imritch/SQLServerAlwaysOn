@@ -11,8 +11,27 @@ $SqlAdminAccount = "CONTOSO\sqladmin"
 
 Write-Host "===== SQL Server Installation Preparation on $ComputerName =====" -ForegroundColor Green
 
+# Step 0: Ensure RSAT AD PowerShell module is installed
+Write-Host "`n[0/4] Checking RSAT AD PowerShell module..." -ForegroundColor Yellow
+$adModule = Get-WindowsFeature -Name RSAT-AD-PowerShell
+if (-not $adModule.Installed) {
+    Write-Host "RSAT AD PowerShell module not found. Installing..." -ForegroundColor Cyan
+    try {
+        Install-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop | Out-Null
+        Write-Host "RSAT AD PowerShell module installed successfully" -ForegroundColor Green
+        Import-Module ActiveDirectory
+    } catch {
+        Write-Host "ERROR: Could not install RSAT AD PowerShell module: $_" -ForegroundColor Red
+        Write-Host "Install manually from Server Manager: AD DS and AD LDS Tools" -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    Write-Host "RSAT AD PowerShell module already installed" -ForegroundColor Green
+    Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+}
+
 # Step 1: Install gMSA on this computer
-Write-Host "`n[1/3] Installing gMSA accounts..." -ForegroundColor Yellow
+Write-Host "`n[1/4] Installing gMSA accounts..." -ForegroundColor Yellow
 
 try {
     Install-ADServiceAccount -Identity "sqlsvc"
@@ -24,7 +43,7 @@ try {
 }
 
 # Step 2: Test gMSA
-Write-Host "`n[2/3] Testing gMSA..." -ForegroundColor Yellow
+Write-Host "`n[2/4] Testing gMSA..." -ForegroundColor Yellow
 $testSqlSvc = Test-ADServiceAccount -Identity "sqlsvc"
 $testSqlAgent = Test-ADServiceAccount -Identity "sqlagent"
 
@@ -36,7 +55,7 @@ if ($testSqlSvc -and $testSqlAgent) {
 }
 
 # Step 3: Create SQL Server 2022 directories
-Write-Host "`n[3/3] Creating SQL Server 2022 directories..." -ForegroundColor Yellow
+Write-Host "`n[3/4] Creating SQL Server 2022 directories..." -ForegroundColor Yellow
 
 # SQL Server 2022 uses MSSQL16
 $dirs = @(
