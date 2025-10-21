@@ -11,8 +11,8 @@ $Node1 = "SQL01.contoso.local"
 $Node2 = "SQL02.contoso.local"
 $AllPassed = $true
 
-# Test 1: DNS Resolution
-Write-Host "[1/10] Testing DNS Resolution..." -ForegroundColor Yellow
+# Test 1: DNS Resolution (FQDN)
+Write-Host "[1/11] Testing DNS Resolution (FQDN)..." -ForegroundColor Yellow
 try {
     $dns1 = Resolve-DnsName $Node1 -ErrorAction Stop
     $dns2 = Resolve-DnsName $Node2 -ErrorAction Stop
@@ -24,8 +24,45 @@ try {
 }
 Write-Host ""
 
+# Test 1b: DNS Resolution (Short Names - CRITICAL for Clustering)
+Write-Host "[1b/11] Testing DNS Resolution (Short Names)..." -ForegroundColor Yellow
+try {
+    $short1 = Resolve-DnsName "SQL01" -ErrorAction Stop
+    $short2 = Resolve-DnsName "SQL02" -ErrorAction Stop
+    Write-Host "  ✓ SQL01 resolves to $($short1.IPAddress)" -ForegroundColor Green
+    Write-Host "  ✓ SQL02 resolves to $($short2.IPAddress)" -ForegroundColor Green
+} catch {
+    Write-Host "  ✗ Short name resolution failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  This is CRITICAL for Windows Clustering!" -ForegroundColor Red
+    Write-Host "  Fix: Run Configure-DNS-Suffix.ps1 on both nodes" -ForegroundColor Yellow
+    $AllPassed = $false
+}
+Write-Host ""
+
+# Test 1c: DNS Suffix Configuration
+Write-Host "[1c/11] Checking DNS Suffix Configuration..." -ForegroundColor Yellow
+$regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\"
+$searchList = (Get-ItemProperty -Path $regPath -Name "SearchList" -ErrorAction SilentlyContinue).SearchList
+$devolution = (Get-ItemProperty -Path $regPath -Name "UseDomainNameDevolution" -ErrorAction SilentlyContinue).UseDomainNameDevolution
+
+if ($searchList -and $searchList -like "*contoso.local*") {
+    Write-Host "  ✓ DNS Search List configured: $searchList" -ForegroundColor Green
+} else {
+    Write-Host "  ✗ DNS Search List not configured" -ForegroundColor Red
+    Write-Host "  Fix: Run Configure-DNS-Suffix.ps1" -ForegroundColor Yellow
+    $AllPassed = $false
+}
+
+if ($devolution -eq 1) {
+    Write-Host "  ✓ DNS suffix devolution enabled (Append suffixes)" -ForegroundColor Green
+} else {
+    Write-Host "  ⚠ DNS suffix devolution not enabled" -ForegroundColor Yellow
+    Write-Host "  Fix: Run Configure-DNS-Suffix.ps1" -ForegroundColor Yellow
+}
+Write-Host ""
+
 # Test 2: Network Connectivity
-Write-Host "[2/10] Testing Network Connectivity..." -ForegroundColor Yellow
+Write-Host "[2/11] Testing Network Connectivity..." -ForegroundColor Yellow
 $ping1 = Test-Connection -ComputerName $Node1 -Count 2 -Quiet
 $ping2 = Test-Connection -ComputerName $Node2 -Count 2 -Quiet
 if ($ping1 -and $ping2) {
@@ -37,7 +74,7 @@ if ($ping1 -and $ping2) {
 Write-Host ""
 
 # Test 3: RPC Connectivity (Port 135)
-Write-Host "[3/10] Testing RPC Connectivity (Port 135)..." -ForegroundColor Yellow
+Write-Host "[3/11] Testing RPC Connectivity (Port 135)..." -ForegroundColor Yellow
 $rpc1 = Test-NetConnection -ComputerName $Node1 -Port 135 -WarningAction SilentlyContinue
 $rpc2 = Test-NetConnection -ComputerName $Node2 -Port 135 -WarningAction SilentlyContinue
 if ($rpc1.TcpTestSucceeded -and $rpc2.TcpTestSucceeded) {
@@ -49,7 +86,7 @@ if ($rpc1.TcpTestSucceeded -and $rpc2.TcpTestSucceeded) {
 Write-Host ""
 
 # Test 4: SMB Connectivity (Port 445)
-Write-Host "[4/10] Testing SMB Connectivity (Port 445)..." -ForegroundColor Yellow
+Write-Host "[4/11] Testing SMB Connectivity (Port 445)..." -ForegroundColor Yellow
 $smb1 = Test-NetConnection -ComputerName $Node1 -Port 445 -WarningAction SilentlyContinue
 $smb2 = Test-NetConnection -ComputerName $Node2 -Port 445 -WarningAction SilentlyContinue
 if ($smb1.TcpTestSucceeded -and $smb2.TcpTestSucceeded) {
@@ -61,7 +98,7 @@ if ($smb1.TcpTestSucceeded -and $smb2.TcpTestSucceeded) {
 Write-Host ""
 
 # Test 5: Domain Membership
-Write-Host "[5/10] Checking Domain Membership..." -ForegroundColor Yellow
+Write-Host "[5/11] Checking Domain Membership..." -ForegroundColor Yellow
 $domain1 = (Get-WmiObject -Class Win32_ComputerSystem -ComputerName $Node1).Domain
 $domain2 = (Get-WmiObject -Class Win32_ComputerSystem -ComputerName $Node2).Domain
 if ($domain1 -eq "contoso.local" -and $domain2 -eq "contoso.local") {
@@ -73,7 +110,7 @@ if ($domain1 -eq "contoso.local" -and $domain2 -eq "contoso.local") {
 Write-Host ""
 
 # Test 6: Failover Clustering Feature
-Write-Host "[6/10] Checking Failover Clustering Feature..." -ForegroundColor Yellow
+Write-Host "[6/11] Checking Failover Clustering Feature..." -ForegroundColor Yellow
 $fc1 = Get-WindowsFeature -Name Failover-Clustering -ComputerName $Node1
 $fc2 = Get-WindowsFeature -Name Failover-Clustering -ComputerName $Node2
 if ($fc1.Installed -and $fc2.Installed) {
@@ -85,7 +122,7 @@ if ($fc1.Installed -and $fc2.Installed) {
 Write-Host ""
 
 # Test 7: Windows Firewall Rules
-Write-Host "[7/10] Checking Firewall Rules..." -ForegroundColor Yellow
+Write-Host "[7/11] Checking Firewall Rules..." -ForegroundColor Yellow
 $fwRules = Get-NetFirewallRule -DisplayGroup "Failover Clusters" | Where-Object {$_.Enabled -eq $true}
 if ($fwRules.Count -gt 10) {
     Write-Host "  ✓ Firewall rules enabled ($($fwRules.Count) rules)" -ForegroundColor Green
@@ -96,7 +133,7 @@ if ($fwRules.Count -gt 10) {
 Write-Host ""
 
 # Test 8: Network Adapter Configuration
-Write-Host "[8/10] Checking Network Adapter Configuration..." -ForegroundColor Yellow
+Write-Host "[8/11] Checking Network Adapter Configuration..." -ForegroundColor Yellow
 $Adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up" -and $_.Name -like "Ethernet*"} | Select-Object -First 1
 $IPConfig = Get-NetIPConfiguration -InterfaceIndex $Adapter.InterfaceIndex
 $IPs = Get-NetIPAddress -InterfaceIndex $Adapter.InterfaceIndex -AddressFamily IPv4
@@ -111,7 +148,7 @@ if ($IPs.Count -eq 1) {
 Write-Host ""
 
 # Test 9: Secondary IPs at ENI Level (check via EC2 metadata)
-Write-Host "[9/10] Checking Secondary IPs at ENI Level..." -ForegroundColor Yellow
+Write-Host "[9/11] Checking Secondary IPs at ENI Level..." -ForegroundColor Yellow
 try {
     $mac = (Invoke-WebRequest -Uri http://169.254.169.254/latest/meta-data/network/interfaces/macs/ -UseBasicParsing).Content.Trim()
     $localIPs = (Invoke-WebRequest -Uri "http://169.254.169.254/latest/meta-data/network/interfaces/macs/$mac/local-ipv4s" -UseBasicParsing).Content -split "`n"
@@ -133,7 +170,7 @@ try {
 Write-Host ""
 
 # Test 10: WMI Connectivity
-Write-Host "[10/10] Testing WMI Connectivity..." -ForegroundColor Yellow
+Write-Host "[10/11] Testing WMI Connectivity..." -ForegroundColor Yellow
 try {
     $wmi1 = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $Node1 -ErrorAction Stop
     $wmi2 = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $Node2 -ErrorAction Stop

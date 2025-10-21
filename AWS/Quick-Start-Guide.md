@@ -204,9 +204,9 @@ cd C:\SQLAGScripts
 # Domain Password: <your CONTOSO\Administrator password>
 # Its the password you got when you created the EC2 instances and used aws ec2 get-password-data to get the password for the DC01 instance. 
 # Computer Name: SQL01
+# When you execute the script 03-Join-Domain.ps1, it will automatically rename the computer to SQL01 and reboot the machine. 
+# After the machine reboots, you need to execute the script again to join the domain.
 ```
-
-**Wait for restart**
 
 ### 4.3: Join SQL02 to Domain
 
@@ -220,6 +220,8 @@ cd C:\SQLAGScripts
 # DC IP: <DC01PrivateIP from Step 2>
 # Domain Password: <your CONTOSO\Administrator password>
 # Computer Name: SQL02
+# When you execute the script 03-Join-Domain.ps1, it will automatically rename the computer to SQL02 and reboot the machine. 
+# After the machine reboots, you need to execute the script again to join the domain.
 ```
 
 **Wait for restart**
@@ -231,6 +233,26 @@ From now on, RDP to SQL01 and SQL02 as:
 - Password: <your domain password>
 
 ✅ **Checkpoint:** All machines joined to domain
+
+**⚠️ IMPORTANT - DNS Suffix Configuration:**
+
+The updated `03-Join-Domain.ps1` script now automatically configures DNS suffix settings required for clustering. This enables short name resolution (e.g., "SQL02" instead of "SQL02.contoso.local"), which is **CRITICAL** for Windows Failover Clustering.
+
+If you joined the domain before this update, or if you encounter "Computer SQL02 could not be reached" errors during cluster creation, run this on **BOTH** nodes:
+
+```powershell
+cd C:\SQLAGScripts
+.\Configure-DNS-Suffix.ps1
+```
+
+Verify short name resolution works:
+```powershell
+nslookup SQL01
+nslookup SQL02
+# Both should resolve successfully
+```
+
+See `DNS-SUFFIX-ISSUE.md` for detailed explanation.
 
 ## Step 4.5: Update gMSA Permissions
 
@@ -268,14 +290,18 @@ chmod +x 04b-Assign-Secondary-IPs.sh
 ```
 
 **What this does:**
-- Assigns 10.0.1.50 and 10.0.1.51 to SQL01 (Secondary IP 1 and Secondary IP 2)
-- Assigns 10.0.2.50 and 10.0.2.51 to SQL02 (Secondary IP 1 and Secondary IP 2)
+- Assigns 10.0.1.50 and 10.0.1.51 to SQL01 (for Cluster IP and Listener IP)
+- Assigns 10.0.2.50 and 10.0.2.51 to SQL02 (for Cluster IP and Listener IP)
 
 **Expected output:**
 ```
 ✅ SQL01 now has: Primary IP + 10.0.1.50 + 10.0.1.51
 ✅ SQL02 now has: Primary IP + 10.0.2.50 + 10.0.2.51
 ```
+
+**IP Allocation:**
+- **Cluster IPs:** 10.0.1.50 (Subnet 1), 10.0.2.50 (Subnet 2)
+- **Listener IPs:** 10.0.1.51 (Subnet 1), 10.0.2.51 (Subnet 2)
 
 ### 5.2: Important Note About Windows Configuration
 
@@ -284,10 +310,14 @@ chmod +x 04b-Assign-Secondary-IPs.sh
 The secondary IPs are assigned at the AWS ENI level only. Windows Failover Cluster will automatically configure them when it brings cluster resources online. Manually adding them to Windows will break network connectivity.
 
 **Important Note:**
-This is a critical distinction in the way SQL Server Availability Groups are configure in AWS. 
-Go through the following article and the video given at the link below to know more about this. 
-[article](https://docs.aws.amazon.com/sql-server-ec2/latest/userguide/aws-sql-ec2-clustering.html#sql-ip-assignment)
+This is a critical distinction in the way SQL Server Availability Groups are configured in AWS. 
+Go through the following article and the video given at the link below to know more about this.
+
+[article](https://docs.aws.amazon.com/sql-server-ec2/latest/userguide/aws-sql-ec2-clustering.html#sql-ip-assignment) 
+
 [video](https://www.youtube.com/watch?v=9CqhH03vLeo)
+
+**AUTOMATED APPROACH:** See `Scripts/README-Automation.md` for fully automated setup with zero GUI interaction for cluster/AG creation!
 
 
 
@@ -308,6 +338,27 @@ cd C:\SQLAGScripts
 
 ### 6.2: Create Cluster
 
+#### Option A: Automated (No Prompts - Recommended)
+
+On **SQL01 only**:
+
+```powershell
+cd C:\SQLAGScripts
+
+# Verify secondary IPs are assigned (optional but recommended)
+.\04d-Verify-Secondary-IPs.ps1
+
+# Create cluster with automatic IP detection
+.\05-Create-WSFC.ps1
+
+# Or explicitly specify IPs
+.\05-Create-WSFC.ps1 -ClusterIP1 "10.0.1.50" -ClusterIP2 "10.0.2.50"
+```
+
+**What happens:** The script automatically uses the secondary IPs assigned at the AWS ENI level. No GUI interaction needed!
+
+#### Option B: Interactive (Original)
+
 On **SQL01 only**:
 
 ```powershell
@@ -315,11 +366,13 @@ cd C:\SQLAGScripts
 .\05-Create-WSFC.ps1
 
 # When prompted for Cluster IPs, use the ones assigned in Step 5:
-# Cluster IP 1 (Subnet 1): 10.0.1.100
-# Cluster IP 2 (Subnet 2): 10.0.2.100
+# Cluster IP 1 (Subnet 1): 10.0.1.50
+# Cluster IP 2 (Subnet 2): 10.0.2.50
 ```
 
 ✅ **Checkpoint:** Cluster created and both nodes online
+
+**Note:** The cluster IPs should be `.50` addresses (10.0.1.50, 10.0.2.50), not `.100` as previously shown. The `.51` addresses are reserved for the AG Listener.
 
 ---
 
@@ -403,6 +456,24 @@ New-SmbShare -Name "SQLBackup" -Path $backupPath -FullAccess "Everyone"
 
 ### 8.3: Create Availability Group
 
+#### Option A: Automated (No Prompts - Recommended)
+
+On **SQL01**:
+
+```powershell
+cd C:\SQLAGScripts
+
+# Create AG with automatic IP detection
+.\09-Create-AvailabilityGroup.ps1
+
+# Or explicitly specify IPs
+.\09-Create-AvailabilityGroup.ps1 -ListenerIP1 "10.0.1.51" -ListenerIP2 "10.0.2.51"
+```
+
+**What happens:** The script automatically uses the secondary IPs assigned at the AWS ENI level. The listener IPs will be brought online by Windows Failover Cluster without any GUI interaction!
+
+#### Option B: Interactive (Original)
+
 On **SQL01**:
 
 ```powershell
@@ -410,11 +481,13 @@ cd C:\SQLAGScripts
 .\09-Create-AvailabilityGroup.ps1
 
 # When prompted for Listener IPs, use the ones assigned in Step 5:
-# Listener IP 1 (Subnet 1): 10.0.1.101
-# Listener IP 2 (Subnet 2): 10.0.2.101
+# Listener IP 1 (Subnet 1): 10.0.1.51
+# Listener IP 2 (Subnet 2): 10.0.2.51
 ```
 
 ✅ **Checkpoint:** Availability Group created with listener
+
+**Note:** The listener IPs should be `.51` addresses (10.0.1.51, 10.0.2.51), not `.101` as previously shown. These match the IPs assigned in Step 5.
 
 ---
 

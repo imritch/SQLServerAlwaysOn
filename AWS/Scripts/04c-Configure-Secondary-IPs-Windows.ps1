@@ -81,7 +81,16 @@ Set-DnsClientServerAddress `
     -ServerAddresses $DNS `
     -ErrorAction Stop
 
+# Configure DNS suffix settings (CRITICAL for Windows Clustering)
+Write-Host "  Configuring DNS suffix settings..." -ForegroundColor Cyan
+Set-DnsClient -InterfaceIndex $Adapter.InterfaceIndex -ConnectionSpecificSuffix "contoso.local" -ErrorAction SilentlyContinue
+
+$regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\"
+Set-ItemProperty $regPath -Name "SearchList" -Value "contoso.local" -Type String -ErrorAction SilentlyContinue
+Set-ItemProperty $regPath -Name "UseDomainNameDevolution" -Value 1 -Type DWord -ErrorAction SilentlyContinue
+
 Write-Host "✓ Static IP configured successfully" -ForegroundColor Green
+Write-Host "✓ DNS suffix settings configured (enables short name resolution)" -ForegroundColor Green
 Write-Host ""
 
 # Step 3: Verify secondary IPs in AWS (do NOT configure them in Windows)

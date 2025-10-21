@@ -60,8 +60,16 @@ Write-Host "  Setting DNS suffix to contoso.local..." -ForegroundColor Cyan
 Set-DnsClient -InterfaceIndex $adapter.ifIndex -ConnectionSpecificSuffix $DomainName
 
 # Set domain at registry level
-Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\" -Name "Domain" -Value $DomainName -ErrorAction SilentlyContinue
-Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\" -Name "NV Domain" -Value $DomainName -ErrorAction SilentlyContinue
+$regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\"
+Set-ItemProperty $regPath -Name "Domain" -Value $DomainName -ErrorAction SilentlyContinue
+Set-ItemProperty $regPath -Name "NV Domain" -Value $DomainName -ErrorAction SilentlyContinue
+
+# Configure DNS suffix search order (CRITICAL for Windows Clustering)
+# This enables "Append primary and connection specific DNS suffixes" setting
+Write-Host "  Configuring DNS suffix search order..." -ForegroundColor Cyan
+Set-ItemProperty $regPath -Name "SearchList" -Value $DomainName -Type String -ErrorAction SilentlyContinue
+Set-ItemProperty $regPath -Name "UseDomainNameDevolution" -Value 1 -Type DWord -ErrorAction SilentlyContinue
+Write-Host "  Enabled: Append primary and connection specific DNS suffixes" -ForegroundColor Green
 
 # Enable NetBIOS over TCP/IP
 $adapterConfig = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object {$_.InterfaceIndex -eq $adapter.ifIndex}

@@ -1,89 +1,93 @@
 #!/bin/bash
-# Add missing security group rules for Active Directory and SQL AG
-# Run this from WSL/Linux terminal if you already deployed the stack
+# Add missing Windows Clustering security group rules
+# This adds NetBIOS and additional Kerberos ports needed for clustering
 
 set -e
 
-# Configuration
 STACK_NAME="${1:-sql-ag-demo}"
 REGION="${2:-us-east-1}"
-VPC_CIDR="${3:-10.0.0.0/16}"
 
-echo "===== Adding Security Group Rules ====="
+echo "===== Adding Missing Windows Clustering Ports ====="
 echo "Stack: $STACK_NAME"
 echo "Region: $REGION"
-echo "VPC CIDR: $VPC_CIDR"
 echo ""
 
-# Get security group name from CloudFormation
-echo "[1/3] Getting security group..."
-SG_NAME=$(aws cloudformation describe-stacks \
+# Get Security Group ID and VPC CIDR from CloudFormation
+echo "[1/3] Getting security group ID from CloudFormation..."
+SG_ID=$(aws cloudformation describe-stacks \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
   --query 'Stacks[0].Outputs[?OutputKey==`SecurityGroupId`].OutputValue' \
   --output text)
 
-if [ -z "$SG_NAME" ]; then
-  echo "ERROR: Could not find security group in stack outputs"
+VPC_CIDR="10.0.0.0/16"  # Default from your template
+
+if [ -z "$SG_ID" ]; then
+  echo "ERROR: Could not find security group ID in stack outputs"
   exit 1
 fi
 
-echo "Security Group Name: $SG_NAME"
-
-# Get actual security group ID
-SG_ID=$(aws ec2 describe-security-groups \
-  --filters "Name=group-name,Values=$SG_NAME" \
-  --region "$REGION" \
-  --query 'SecurityGroups[0].GroupId' \
-  --output text)
-
 echo "Security Group ID: $SG_ID"
+echo "VPC CIDR: $VPC_CIDR"
 echo ""
 
-# Function to add rule with error handling
-add_rule() {
-  local protocol=$1
-  local port=$2
-  local cidr=$3
-  local description=$4
-  
-  echo "Adding: $description ($protocol/$port)"
-  
-  if aws ec2 authorize-security-group-ingress \
-    --group-id "$SG_ID" \
-    --protocol "$protocol" \
-    --port "$port" \
-    --cidr "$cidr" \
-    --region "$REGION" 2>/dev/null; then
-    echo "  ✓ Added"
-  else
-    echo "  - Already exists or error (continuing...)"
-  fi
-}
+# Add missing Windows Clustering rules
+echo "[2/3] Adding missing Windows Clustering rules..."
 
-echo "[2/3] Adding DNS rules..."
-add_rule tcp 53 "$VPC_CIDR" "DNS TCP"
-add_rule udp 53 "$VPC_CIDR" "DNS UDP"
+# NetBIOS Name Service (UDP 137)
+echo "Adding NetBIOS Name Service (UDP 137)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=udp,FromPort=137,ToPort=137,IpRanges="[{CidrIp=$VPC_CIDR,Description='NetBIOS Name Service'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
+# NetBIOS Datagram Service (UDP 138)
+echo "Adding NetBIOS Datagram Service (UDP 138)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=udp,FromPort=138,ToPort=138,IpRanges="[{CidrIp=$VPC_CIDR,Description='NetBIOS Datagram Service'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
+# NetBIOS Session Service (TCP 139)
+echo "Adding NetBIOS Session Service (TCP 139)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=tcp,FromPort=139,ToPort=139,IpRanges="[{CidrIp=$VPC_CIDR,Description='NetBIOS Session Service'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
+# Kerberos Password Change (TCP/UDP 464)
+echo "Adding Kerberos Password Change (TCP/UDP 464)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=tcp,FromPort=464,ToPort=464,IpRanges="[{CidrIp=$VPC_CIDR,Description='Kerberos Password Change'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=udp,FromPort=464,ToPort=464,IpRanges="[{CidrIp=$VPC_CIDR,Description='Kerberos Password Change UDP'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
+
+# Windows Remote Management (WinRM) - TCP 5985, 5986
+echo "Adding WinRM (TCP 5985-5986)..."
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --ip-permissions IpProtocol=tcp,FromPort=5985,ToPort=5986,IpRanges="[{CidrIp=$VPC_CIDR,Description='WinRM'}]" \
+  --region "$REGION" 2>/dev/null || echo "  (Rule may already exist)"
 
 echo ""
-echo "[3/3] Adding Active Directory and Clustering rules..."
-add_rule tcp 88 "$VPC_CIDR" "Kerberos TCP"
-add_rule udp 88 "$VPC_CIDR" "Kerberos UDP"
-add_rule tcp 389 "$VPC_CIDR" "LDAP"
-add_rule udp 389 "$VPC_CIDR" "LDAP UDP"
-add_rule tcp 636 "$VPC_CIDR" "LDAPS"
-add_rule tcp 3268-3269 "$VPC_CIDR" "Global Catalog"
-add_rule tcp 445 "$VPC_CIDR" "SMB"
-add_rule tcp 135 "$VPC_CIDR" "RPC"
-add_rule tcp 49152-65535 "$VPC_CIDR" "Dynamic RPC"
-add_rule udp 3343 "$VPC_CIDR" "Cluster Service UDP"
-add_rule tcp 5985 "$VPC_CIDR" "WinRM HTTP"
-
-echo ""
-echo "===== Security Group Rules Added Successfully! ====="
-echo ""
-echo "You can now:"
-echo "1. Test DNS from SQL nodes: nslookup contoso.local <DC_IP>"
-echo "2. Join SQL nodes to domain: Run 03-Join-Domain.ps1"
+echo "[3/3] Verifying security group rules..."
 echo ""
 
+aws ec2 describe-security-groups \
+  --group-ids "$SG_ID" \
+  --region "$REGION" \
+  --query 'SecurityGroups[0].IpPermissions[*].[IpProtocol,FromPort,ToPort,IpRanges[0].Description]' \
+  --output table
+
+echo ""
+echo "===== Security Group Rules Updated! ====="
+echo ""
+echo "Next Steps:"
+echo "1. Run the troubleshooting script on SQL01: .\Troubleshoot-Clustering.ps1"
+echo "2. Then try creating the cluster again"
+echo ""

@@ -1,23 +1,26 @@
 # SQL01 - Create Availability Group (Multi-Subnet)
 # Run as CONTOSO\Administrator on SQL01
 
+param(
+    [string]$ListenerIP1 = "10.0.1.51",
+    [string]$ListenerIP2 = "10.0.2.51",
+    [string]$AGName = "SQLAOAG01",
+    [string]$ListenerName = "SQLAGL01",
+    [int]$ListenerPort = 59999,
+    [int]$EndpointPort = 5022,
+    [string]$DatabaseName = "AGTestDB",
+    [string]$PrimaryReplica = "SQL01",
+    [string]$SecondaryReplica = "SQL02"
+)
+
 $ErrorActionPreference = "Stop"
 
 # Import SQL PowerShell module
 Import-Module SqlServer
 
-# Configuration
-$AGName = "SQLAOAG01"
-$ListenerName = "SQLAGL01"
-$ListenerPort = 59999
-$EndpointPort = 5022
-$DatabaseName = "AGTestDB"
-$PrimaryReplica = "SQL01"
-$SecondaryReplica = "SQL02"
-
 Write-Host "===== Creating Availability Group (Multi-Subnet) =====" -ForegroundColor Green
 Write-Host "`nIMPORTANT: Multi-subnet AG Listener requires 2 IP addresses (one per subnet)" -ForegroundColor Yellow
-Write-Host "Check CloudFormation outputs for recommended IPs" -ForegroundColor Cyan
+Write-Host "These IPs must be pre-assigned at the AWS ENI level" -ForegroundColor Cyan
 
 # Get subnet information
 Write-Host "`nSubnet Information:" -ForegroundColor Cyan
@@ -26,24 +29,30 @@ Write-Host "  Subnet 2 (SQL02): 10.0.2.0/24" -ForegroundColor White
 Write-Host "`nPre-assigned Secondary IPs for Listener:" -ForegroundColor Yellow
 Write-Host "  Listener IP 1: 10.0.1.51" -ForegroundColor White
 Write-Host "  Listener IP 2: 10.0.2.51" -ForegroundColor White
-Write-Host "`n(These were assigned in step 04b and configured in step 04c)" -ForegroundColor Cyan
+Write-Host "`n(These were assigned in step 04b)" -ForegroundColor Cyan
+Write-Host ""
 
-$ListenerIP1 = Read-Host "`nEnter AG Listener IP for Subnet 1 (press Enter for 10.0.1.51)"
-if ([string]::IsNullOrWhiteSpace($ListenerIP1)) {
-    $ListenerIP1 = "10.0.1.51"
-}
-
-$ListenerIP2 = Read-Host "Enter AG Listener IP for Subnet 2 (press Enter for 10.0.2.51)"
-if ([string]::IsNullOrWhiteSpace($ListenerIP2)) {
-    $ListenerIP2 = "10.0.2.51"
-}
-
-Write-Host "`n===== Multi-Subnet AG Configuration =====" -ForegroundColor Green
+Write-Host "===== Multi-Subnet AG Configuration =====" -ForegroundColor Green
 Write-Host "AG Name: $AGName" -ForegroundColor Cyan
 Write-Host "Listener Name: $ListenerName" -ForegroundColor Cyan
 Write-Host "Listener IP 1 (Subnet 1): $ListenerIP1" -ForegroundColor Cyan
 Write-Host "Listener IP 2 (Subnet 2): $ListenerIP2" -ForegroundColor Cyan
 Write-Host "Listener Port: $ListenerPort" -ForegroundColor Cyan
+Write-Host ""
+
+# Pre-flight check: Verify IPs are NOT in Windows (should only be at ENI level)
+Write-Host "[0/6] Pre-flight validation..." -ForegroundColor Yellow
+$windowsIPs = Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress
+
+if ($windowsIPs -contains $ListenerIP1 -or $windowsIPs -contains $ListenerIP2) {
+    Write-Host "ERROR: Listener IPs found in Windows configuration!" -ForegroundColor Red
+    Write-Host "Secondary IPs must ONLY exist at AWS ENI level, not in Windows." -ForegroundColor Yellow
+    Write-Host "Remove them from Windows network adapter before proceeding." -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "✓ Listener IPs verified to be at ENI level only (not in Windows)" -ForegroundColor Green
+Write-Host ""
 
 # Step 1: Create Database Mirroring Endpoints on both replicas
 Write-Host "`n[1/6] Creating database mirroring endpoints..." -ForegroundColor Yellow
@@ -166,13 +175,17 @@ GO
 "@
 
 Write-Host "Creating listener with IPs: $ListenerIP1, $ListenerIP2" -ForegroundColor Cyan
+Write-Host "The cluster will automatically detect and use the secondary" -ForegroundColor Yellow
+Write-Host "IPs from the AWS ENI. This may take 30-60 seconds..." -ForegroundColor Yellow
+Write-Host ""
 
 try {
     Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createListenerScript -QueryTimeout 120
-    Write-Host "Multi-subnet listener '$ListenerName' created successfully" -ForegroundColor Green
+    Write-Host "✓ Multi-subnet listener '$ListenerName' created successfully" -ForegroundColor Green
     
     # Wait for listener to come online
-    Start-Sleep -Seconds 5
+    Write-Host "Waiting for listener resources to stabilize..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 10
     
     # Verify listener is online
     $listenerCheck = @"
@@ -186,11 +199,54 @@ WHERE dns_name = N'$ListenerName';
     
     $listenerInfo = Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $listenerCheck
     if ($listenerInfo) {
-        Write-Host "Listener is online and registered" -ForegroundColor Green
+        Write-Host "✓ Listener is online and registered in SQL Server" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Listener DNS: $($listenerInfo.dns_name)" -ForegroundColor Cyan
+        Write-Host "Listener Port: $($listenerInfo.port)" -ForegroundColor Cyan
+        Write-Host "Listener IPs: $($listenerInfo.ip_configuration_string_from_cluster)" -ForegroundColor Cyan
     }
+    
+    # Verify listener IPs in Failover Cluster
+    Write-Host ""
+    Write-Host "Verifying listener IPs in Windows Failover Cluster..." -ForegroundColor Yellow
+    
+    $listenerIPResources = Get-ClusterResource | Where-Object {
+        $_.OwnerGroup -like "*$AGName*" -and $_.ResourceType -eq "IP Address"
+    }
+    
+    if ($listenerIPResources) {
+        $allOnline = $true
+        foreach ($ipResource in $listenerIPResources) {
+            $state = $ipResource.State
+            $ipAddress = ($ipResource | Get-ClusterParameter | Where-Object {$_.Name -eq "Address"}).Value
+            
+            if ($state -eq "Online") {
+                Write-Host "  ✓ Listener IP $ipAddress is Online" -ForegroundColor Green
+            } else {
+                Write-Host "  ✗ Listener IP $ipAddress is $state" -ForegroundColor Red
+                $allOnline = $false
+            }
+        }
+        
+        if (-not $allOnline) {
+            Write-Host ""
+            Write-Host "WARNING: Some listener IPs did not come online." -ForegroundColor Yellow
+            Write-Host "This usually means the IPs are not assigned at the ENI level." -ForegroundColor Yellow
+            Write-Host "Verify with: aws ec2 describe-network-interfaces" -ForegroundColor Cyan
+        }
+    }
+    
 } catch {
-    Write-Host "Error creating listener: $_" -ForegroundColor Red
-    Write-Host "You may need to create it manually in SSMS or check IP availability" -ForegroundColor Yellow
+    Write-Host "ERROR creating listener: $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Common causes:" -ForegroundColor Yellow
+    Write-Host "1. Secondary IPs not assigned at AWS ENI level (run 04b-Assign-Secondary-IPs.sh)" -ForegroundColor White
+    Write-Host "2. IPs already in use by another cluster resource" -ForegroundColor White
+    Write-Host "3. Availability Group not in healthy state" -ForegroundColor White
+    Write-Host ""
+    Write-Host "You can try creating the listener manually using:" -ForegroundColor Yellow
+    Write-Host $createListenerScript -ForegroundColor Cyan
+    exit 1
 }
 
 # Summary
