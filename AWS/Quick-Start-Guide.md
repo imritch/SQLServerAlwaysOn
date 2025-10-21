@@ -283,6 +283,14 @@ chmod +x 04b-Assign-Secondary-IPs.sh
 
 The secondary IPs are assigned at the AWS ENI level only. Windows Failover Cluster will automatically configure them when it brings cluster resources online. Manually adding them to Windows will break network connectivity.
 
+**Important Note:**
+This is a critical distinction in the way SQL Server Availability Groups are configure in AWS. 
+Go through the following article and the video given at the link below to know more about this. 
+[article](https://docs.aws.amazon.com/sql-server-ec2/latest/userguide/aws-sql-ec2-clustering.html#sql-ip-assignment)
+[video](https://www.youtube.com/watch?v=9CqhH03vLeo)
+
+
+
 ✅ **Checkpoint:** Secondary IPs assigned in AWS (Windows Cluster will handle the rest)
 
 ---
