@@ -27,13 +27,13 @@ GO
 -- Take full backup (required before adding to AG)
 -- SQL Server 2022 uses MSSQL16
 BACKUP DATABASE AGTestDB 
-TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Full.bak'
+TO DISK = 'D:\MSSQL\BACKUP\AGTestDB_Full.bak'
 WITH FORMAT, INIT, COMPRESSION;
 GO
 
 -- Take log backup
 BACKUP LOG AGTestDB 
-TO DISK = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP\AGTestDB_Log.trn'
+TO DISK = 'D:\MSSQL\BACKUP\AGTestDB_Log.trn'
 WITH FORMAT, INIT, COMPRESSION;
 GO
 

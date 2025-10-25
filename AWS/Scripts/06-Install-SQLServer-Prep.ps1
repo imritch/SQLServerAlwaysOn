@@ -12,7 +12,7 @@ $SqlAdminAccount = "CONTOSO\sqladmin"
 Write-Host "===== SQL Server Installation Preparation on $ComputerName =====" -ForegroundColor Green
 
 # Step 0: Ensure RSAT AD PowerShell module is installed
-Write-Host "`n[0/4] Checking RSAT AD PowerShell module..." -ForegroundColor Yellow
+Write-Host "`n[0/3] Checking RSAT AD PowerShell module..." -ForegroundColor Yellow
 $adModule = Get-WindowsFeature -Name RSAT-AD-PowerShell
 if (-not $adModule.Installed) {
     Write-Host "RSAT AD PowerShell module not found. Installing..." -ForegroundColor Cyan
@@ -31,7 +31,7 @@ if (-not $adModule.Installed) {
 }
 
 # Step 1: Install gMSA on this computer
-Write-Host "`n[1/4] Installing gMSA accounts..." -ForegroundColor Yellow
+Write-Host "`n[1/3] Installing gMSA accounts..." -ForegroundColor Yellow
 
 try {
     Install-ADServiceAccount -Identity "sqlsvc"
@@ -43,7 +43,7 @@ try {
 }
 
 # Step 2: Test gMSA
-Write-Host "`n[2/4] Testing gMSA..." -ForegroundColor Yellow
+Write-Host "`n[2/3] Testing gMSA..." -ForegroundColor Yellow
 $testSqlSvc = Test-ADServiceAccount -Identity "sqlsvc"
 $testSqlAgent = Test-ADServiceAccount -Identity "sqlagent"
 
@@ -55,13 +55,12 @@ if ($testSqlSvc -and $testSqlAgent) {
 }
 
 # Step 3: Create SQL Server 2022 directories
-Write-Host "`n[3/4] Creating SQL Server 2022 directories..." -ForegroundColor Yellow
+Write-Host "`n[3/3] Creating SQL Server 2022 directories..." -ForegroundColor Yellow
 
-# SQL Server 2022 uses MSSQL16
 $dirs = @(
-    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA",
-    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\LOG",
-    "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
+    "D:\MSSQL\DATA",
+    "D:\MSSQL\LOG",
+    "D:\MSSQL\BACKUP"
 )
 
 foreach ($dir in $dirs) {
@@ -78,4 +77,3 @@ Write-Host "3. SQL Service Account: $gMSASqlService (no password)" -ForegroundCo
 Write-Host "4. Agent Service Account: $gMSASqlAgent (no password)" -ForegroundColor Cyan
 Write-Host "5. SQL Admins: Add CONTOSO\sqladmin and BUILTIN\Administrators" -ForegroundColor Cyan
 Write-Host "`nAfter SQL Server 2022 installation, run: 07-Enable-AlwaysOn.ps1" -ForegroundColor Yellow
-

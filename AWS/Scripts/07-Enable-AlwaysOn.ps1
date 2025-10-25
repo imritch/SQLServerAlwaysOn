@@ -6,8 +6,24 @@ $ErrorActionPreference = "Stop"
 Write-Host "===== Enabling AlwaysOn High Availability =====" -ForegroundColor Green
 
 try {
+    # Install SqlServer module if not already installed
+    Write-Host "Checking for SqlServer PowerShell module..." -ForegroundColor Yellow
+    if (-not (Get-Module -ListAvailable -Name SqlServer)) {
+        Write-Host "SqlServer module not found. Installing..." -ForegroundColor Yellow
+        
+        # Install NuGet package provider (required for module installation) - Force bypasses prompts
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+        
+        # Install SqlServer module - Force bypasses all prompts including NuGet
+        Install-Module -Name SqlServer -Force -AllowClobber -Confirm:$false
+        
+        Write-Host "SqlServer module installed successfully!" -ForegroundColor Green
+    } else {
+        Write-Host "SqlServer module already installed." -ForegroundColor Green
+    }
+    
     # Import SQL PowerShell module
-    Import-Module SqlServer -ErrorAction SilentlyContinue
+    Import-Module SqlServer -ErrorAction Stop
     
     # Enable AlwaysOn
     Enable-SqlAlwaysOn -ServerInstance $env:COMPUTERNAME -Force

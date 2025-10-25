@@ -412,6 +412,13 @@ On **both SQL01 and SQL02**:
 
 ### 7.2: Prepare for Installation
 
+###Note###
+Before you proceed with executing the script 06-Install-SQLServer-Prep.ps1, you need to ensure that the AD Web Services is running on the DC01 and the required ports are opened on the Security Group.
+
+1. .\Fix-ADWS.ps1 on DC01
+2. .\add-security-group-rules.sh on your local machine
+
+
 On **both SQL01 and SQL02**:
 
 ```powershell
@@ -472,7 +479,7 @@ On **SQL01**:
 ```powershell
 # Share the backup folder (should already be done by script)
 # SQL Server 2022 uses MSSQL16
-$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
+$backupPath = "D:\MSSQL\BACKUP"
 New-SmbShare -Name "SQLBackup" -Path $backupPath -FullAccess "Everyone"
 ```
 

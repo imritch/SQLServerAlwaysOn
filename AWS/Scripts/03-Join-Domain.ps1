@@ -137,7 +137,7 @@ try {
     Add-Computer -DomainName $DomainName -Server $DCHostname -Credential $Credential -Force -ErrorAction Stop
     
     # Install RSAT AD PowerShell tools (needed for gMSA and AD cmdlets later)
-    Write-Host "`n[6/5] Installing RSAT Active Directory PowerShell module..." -ForegroundColor Yellow
+    Write-Host "`n Installing RSAT Active Directory PowerShell module..." -ForegroundColor Yellow
     try {
         Install-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop | Out-Null
         Write-Host "RSAT AD PowerShell module installed successfully" -ForegroundColor Green

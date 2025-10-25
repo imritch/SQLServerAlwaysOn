@@ -6,7 +6,7 @@ param(
     [string]$ListenerIP2 = "10.0.2.51",
     [string]$AGName = "SQLAOAG01",
     [string]$ListenerName = "SQLAGL01",
-    [int]$ListenerPort = 59999,
+    [int]$ListenerPort = 1433,
     [int]$EndpointPort = 5022,
     [string]$DatabaseName = "AGTestDB",
     [string]$PrimaryReplica = "SQL01",
@@ -41,7 +41,7 @@ Write-Host "Listener Port: $ListenerPort" -ForegroundColor Cyan
 Write-Host ""
 
 # Pre-flight check: Verify IPs are NOT in Windows (should only be at ENI level)
-Write-Host "[0/6] Pre-flight validation..." -ForegroundColor Yellow
+Write-Host "[0/7] Pre-flight validation..." -ForegroundColor Yellow
 $windowsIPs = Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress
 
 if ($windowsIPs -contains $ListenerIP1 -or $windowsIPs -contains $ListenerIP2) {
@@ -54,8 +54,30 @@ if ($windowsIPs -contains $ListenerIP1 -or $windowsIPs -contains $ListenerIP2) {
 Write-Host "✓ Listener IPs verified to be at ENI level only (not in Windows)" -ForegroundColor Green
 Write-Host ""
 
+# Step 0: Create SQL Server service account login on both servers
+Write-Host "`n[0/7] Creating SQL Server service account logins..." -ForegroundColor Yellow
+
+$createLoginScript = @"
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'CONTOSO\sqlsvc$')
+BEGIN
+    CREATE LOGIN [CONTOSO\sqlsvc$] FROM WINDOWS;
+    PRINT 'Login created for CONTOSO\sqlsvc$';
+END
+ELSE
+BEGIN
+    PRINT 'Login already exists for CONTOSO\sqlsvc$';
+END
+GO
+"@
+
+Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createLoginScript -TrustServerCertificate
+Write-Host "Login verified/created on $PrimaryReplica" -ForegroundColor Green
+
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $createLoginScript -TrustServerCertificate
+Write-Host "Login verified/created on $SecondaryReplica" -ForegroundColor Green
+
 # Step 1: Create Database Mirroring Endpoints on both replicas
-Write-Host "`n[1/6] Creating database mirroring endpoints..." -ForegroundColor Yellow
+Write-Host "`n[1/7] Creating database mirroring endpoints..." -ForegroundColor Yellow
 
 # SQL01 Endpoint
 $endpoint1Script = @"
@@ -72,17 +94,17 @@ GRANT CONNECT ON ENDPOINT::Hadr_endpoint TO [CONTOSO\sqlsvc$];
 GO
 "@
 
-Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $endpoint1Script
+Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $endpoint1Script -TrustServerCertificate
 Write-Host "Endpoint created on $PrimaryReplica" -ForegroundColor Green
 
 # SQL02 Endpoint
-Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $endpoint1Script
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $endpoint1Script -TrustServerCertificate
 Write-Host "Endpoint created on $SecondaryReplica" -ForegroundColor Green
 
 # Step 2: Share backup folder on SQL01
-Write-Host "`n[2/6] Setting up backup share..." -ForegroundColor Yellow
-# SQL Server 2022 uses MSSQL16
-$backupPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\BACKUP"
+Write-Host "`n[2/7] Setting up backup share..." -ForegroundColor Yellow
+
+$backupPath = "D:\MSSQL\BACKUP"
 $shareName = "SQLBackup"
 
 try {
@@ -93,11 +115,11 @@ try {
 }
 
 # Step 3: Create Availability Group on Primary
-Write-Host "`n[3/6] Creating Availability Group on primary replica..." -ForegroundColor Yellow
+Write-Host "`n[3/7] Creating Availability Group on primary replica..." -ForegroundColor Yellow
 
 $createAGScript = @"
 CREATE AVAILABILITY GROUP [$AGName]
-WITH (AUTOMATED_BACKUP_PREFERENCE = SECONDARY)
+WITH (AUTOMATED_BACKUP_PREFERENCE = PRIMARY)
 FOR DATABASE [$DatabaseName]
 REPLICA ON 
     N'$PrimaryReplica' WITH (
@@ -119,18 +141,18 @@ REPLICA ON
 GO
 "@
 
-Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createAGScript
+Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createAGScript -TrustServerCertificate
 Write-Host "Availability Group '$AGName' created on $PrimaryReplica" -ForegroundColor Green
 
 # Step 4: Join Secondary Replica
-Write-Host "`n[4/6] Joining secondary replica to AG..." -ForegroundColor Yellow
+Write-Host "`n[4/7] Joining secondary replica to AG..." -ForegroundColor Yellow
 
 $joinAGScript = "ALTER AVAILABILITY GROUP [$AGName] JOIN;"
-Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $joinAGScript
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $joinAGScript -TrustServerCertificate
 Write-Host "$SecondaryReplica joined to AG" -ForegroundColor Green
 
 # Step 5: Restore database on Secondary
-Write-Host "`n[5/6] Restoring database on secondary replica..." -ForegroundColor Yellow
+Write-Host "`n[5/7] Restoring database on secondary replica..." -ForegroundColor Yellow
 
 $uncBackupPath = "\\$PrimaryReplica\$shareName"
 
@@ -141,7 +163,7 @@ FROM DISK = N'$uncBackupPath\AGTestDB_Full.bak'
 WITH NORECOVERY, REPLACE;
 GO
 "@
-Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $restoreFullScript
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $restoreFullScript -TrustServerCertificate
 
 Write-Host "Restoring log backup..." -ForegroundColor Cyan
 $restoreLogScript = @"
@@ -150,17 +172,17 @@ FROM DISK = N'$uncBackupPath\AGTestDB_Log.trn'
 WITH NORECOVERY;
 GO
 "@
-Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $restoreLogScript
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $restoreLogScript -TrustServerCertificate
 
 # Join database to AG on secondary
 Write-Host "Joining database to AG on secondary..." -ForegroundColor Cyan
 $joinDBScript = "ALTER DATABASE [$DatabaseName] SET HADR AVAILABILITY GROUP = [$AGName];"
-Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $joinDBScript
+Invoke-Sqlcmd -ServerInstance $SecondaryReplica -Query $joinDBScript -TrustServerCertificate
 
 Write-Host "Database joined to AG on $SecondaryReplica" -ForegroundColor Green
 
 # Step 6: Create AG Listener (Multi-Subnet with 2 IPs)
-Write-Host "`n[6/6] Creating Availability Group Listener (Multi-Subnet)..." -ForegroundColor Yellow
+Write-Host "`n[6/7] Creating Availability Group Listener (Multi-Subnet)..." -ForegroundColor Yellow
 
 $createListenerScript = @"
 ALTER AVAILABILITY GROUP [$AGName]
@@ -180,7 +202,7 @@ Write-Host "IPs from the AWS ENI. This may take 30-60 seconds..." -ForegroundCol
 Write-Host ""
 
 try {
-    Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createListenerScript -QueryTimeout 120
+    Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $createListenerScript -QueryTimeout 120 -TrustServerCertificate
     Write-Host "✓ Multi-subnet listener '$ListenerName' created successfully" -ForegroundColor Green
     
     # Wait for listener to come online
@@ -197,7 +219,7 @@ FROM sys.availability_group_listeners
 WHERE dns_name = N'$ListenerName';
 "@
     
-    $listenerInfo = Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $listenerCheck
+    $listenerInfo = Invoke-Sqlcmd -ServerInstance $PrimaryReplica -Query $listenerCheck -TrustServerCertificate
     if ($listenerInfo) {
         Write-Host "✓ Listener is online and registered in SQL Server" -ForegroundColor Green
         Write-Host ""
@@ -271,4 +293,3 @@ Write-Host "  Server=$ListenerName.contoso.local,$ListenerPort;Database=$Databas
 Write-Host "`nIMPORTANT: Always use MultiSubnetFailover=True for multi-subnet AG connections!" -ForegroundColor Red
 
 Write-Host "`nNext: Run validation script (10-Validate-AG.sql)" -ForegroundColor Yellow
-
