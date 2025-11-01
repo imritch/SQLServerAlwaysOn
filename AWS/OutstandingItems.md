@@ -168,8 +168,7 @@ Next: Create sample database and Availability Group from SQL01
 ```
 
 ## Solution
-Updated the script to look for the sql server module and if not found, install it before importing 
-the module. Works successfully now. 
+Updated the script to look for the sql server module and if not found, install it before importing the module. Works successfully now. 
 
 6. The Create Availability Group powershell script is failing. 
 There were two separate failures identified. 
