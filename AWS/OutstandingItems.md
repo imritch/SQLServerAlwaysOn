@@ -248,4 +248,24 @@ At C:\SQLAGScripts\Scripts\09-Create-AvailabilityGroup.ps1:180 char:1
 
 ```
 
+7. Line Endings 
+
+05-Create-WSFC.ps1
+I still had to go and manually correct the line ending in the script in Windows environment. Created a new line and removed it and script worked after that. 
+Need to find a solution for this so that it is not required to be done manually. 
+
+Same issue observed with Fix-ADWS.ps1
+Same issue observed with 09-Create-AvailabilityGroup.ps1
+
+8. TCP/IP disabled on SQL Server instances.
+Turned it on manually. 
+
+9. 09-Create-AvailabilityGroup.ps1 failed. 
+Tried Test-NetConnection SQL02 -port 1433 which failed. 
+Disabled firewall on both SQL01 and SQL02.
+Script worked and AG was created successfully. 
+Need to fix this with scripts so that it doesn't have to be done manually. 
+
+
+
 

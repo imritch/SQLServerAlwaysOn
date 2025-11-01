@@ -528,7 +528,7 @@ On **SQL01** in SSMS:
 
 ```sql
 -- Run validation script
-:r C:\SQLAGScripts\10-Validate-AG.sql
+:r C:\SQLAGScripts\Scripts\10-Validate-AG.sql
 ```
 
 **Expected Results:**
@@ -545,12 +545,12 @@ From any domain-joined machine:
 nslookup SQLAGL01.contoso.local
 
 # Test SQL connection
-sqlcmd -S SQLAGL01,59999 -Q "SELECT @@SERVERNAME, DB_NAME()"
+sqlcmd -S SQLAGL01,1433 -Q "SELECT @@SERVERNAME, DB_NAME()"
 ```
 
 ### 9.3: Test Failover
 
-On **SQL01** in SSMS:
+On **SQL02** in SSMS:
 
 ```sql
 -- Manual failover to SQL02
@@ -567,7 +567,7 @@ Or test automatic failover:
 Stop-Service MSSQLSERVER -Force
 
 # Wait 10-15 seconds, then connect via listener
-sqlcmd -S SQLAGL01,59999 -Q "SELECT @@SERVERNAME"
+sqlcmd -S SQLAGL01,1433 -Q "SELECT @@SERVERNAME"
 # Should show SQL02 as new primary
 ```
 
